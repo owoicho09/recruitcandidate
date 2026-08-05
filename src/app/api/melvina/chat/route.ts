@@ -5,6 +5,7 @@ import { getCompany } from "@/lib/services/companies";
 import { getPlanForCompany } from "@/lib/services/plan-access";
 import { createMelvinaStream, extractComplaint } from "@/lib/ai/melvina";
 import { sendPlatformEmail } from "@/lib/email/resend";
+import { logMelvinaExchange } from "@/lib/services/melvina-log";
 import { env } from "@/lib/env";
 
 const schema = z.object({
@@ -47,6 +48,15 @@ export async function POST(request: Request) {
               body: `Reported via Melvina by ${session.fullName} (${session.email}), ${context.role} at ${context.companyName} (${plan?.name ?? "no plan"}).\n\nSeverity: ${complaint.severity}\n\n${complaint.summary}`,
               replyTo: session.email,
             });
+          }
+
+          const lastUserMessage = parsed.data.messages.at(-1);
+          const assistantText = final.content
+            .filter((b) => b.type === "text")
+            .map((b) => b.text)
+            .join("");
+          if (lastUserMessage?.role === "user" && assistantText) {
+            await logMelvinaExchange(session.companyId, session.userId, lastUserMessage.content, assistantText);
           }
         } catch (err) {
           console.error("Melvina complaint handling failed:", err instanceof Error ? err.message : err);

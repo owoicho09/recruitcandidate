@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
-  LayoutDashboard, Building2, Users, CreditCard, Receipt, Gauge, Briefcase, FileText, Activity, Shield, LogOut,
+  LayoutDashboard, Building2, Users, CreditCard, Receipt, Gauge, Briefcase, FileText, Activity, Shield, LogOut, Sparkles,
 } from "lucide-react";
 import { requirePlatformAdmin } from "@/lib/auth/require-platform-admin";
 
@@ -14,6 +14,7 @@ const NAV = [
   { href: "/platform-admin/usage", label: "Usage", icon: Gauge },
   { href: "/platform-admin/jobs", label: "Jobs", icon: Briefcase },
   { href: "/platform-admin/applications", label: "Applications", icon: FileText },
+  { href: "/platform-admin/melvina", label: "Melvina chats", icon: Sparkles },
   { href: "/platform-admin/system", label: "System", icon: Activity },
 ];
 

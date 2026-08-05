@@ -28,7 +28,15 @@ function defaultPosition() {
 }
 
 function greeting(firstName: string): string {
-  return `Hi ${firstName || "there"}! I'm Melvina 👋 I can walk you through publishing your first job, screening candidates, or anything else in RecruitCandidates — just ask. I can also pass along a bug report or complaint straight to the team if something's not working.`;
+  return `Welcome to RecruitCandidates${firstName ? `, ${firstName}` : ""}! Let's get your company ready to receive applications.
+
+Here's a quick checklist to get started:
+1. Upload your logo and complete your company profile
+2. Create your first job
+3. Publish it to go live
+4. Share your career page link with candidates
+
+I'm Melvina — ask me anything along the way, and I can pass a bug report or complaint straight to the team if something's not working.`;
 }
 
 export function MelvinaWidget({ firstName }: { firstName: string }) {
@@ -172,11 +180,11 @@ export function MelvinaWidget({ firstName }: { firstName: string }) {
 
           <div className="flex-1 overflow-y-auto px-3 py-3">
             {state.messages.length === 0 && (
-              <p className="px-1 text-sm text-foreground-muted">{greeting(firstName)}</p>
+              <p className="whitespace-pre-wrap px-1 text-sm text-foreground-muted">{greeting(firstName)}</p>
             )}
             <div className="flex flex-col gap-3">
               {state.messages.map((m, i) => (
-                <div key={i} className={cn("max-w-[85%] rounded-lg px-3 py-2 text-sm", m.role === "user" ? "ml-auto bg-accent text-accent-foreground" : "bg-surface-muted text-foreground")}>
+                <div key={i} className={cn("max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm", m.role === "user" ? "ml-auto bg-accent text-accent-foreground" : "bg-surface-muted text-foreground")}>
                   {m.content || (streaming && i === state.messages.length - 1 ? "…" : "")}
                 </div>
               ))}
