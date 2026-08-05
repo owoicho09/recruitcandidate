@@ -82,7 +82,7 @@ export function ApplicationForm({ company, job }: { company: Company; job: Job }
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
             {serverError && <p className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">{serverError}</p>}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="First name" htmlFor="firstName" required error={errors.firstName?.message}>
                 <Input id="firstName" {...register("firstName")} />
               </Field>

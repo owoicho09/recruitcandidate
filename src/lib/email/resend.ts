@@ -40,6 +40,10 @@ export async function sendEmail(input: SendEmailInput): Promise<EmailLog> {
 
   if (resend) {
     try {
+      // The Resend SDK doesn't throw on API-level errors (invalid recipient,
+      // unverified domain, rate limit, etc) — it resolves normally with
+      // `{ data: null, error: {...} }`, so a successful (non-throwing) call
+      // is not the same as a successful send. Both cases must be checked.
       const result = await resend.emails.send({
         from: `${env.EMAIL_FROM_NAME} <${env.EMAIL_FROM_ADDRESS}>`,
         to: input.to,
@@ -48,8 +52,13 @@ export async function sendEmail(input: SendEmailInput): Promise<EmailLog> {
         text: input.body,
         ...(input.scheduledFor ? { scheduledAt: input.scheduledFor } : {}),
       });
-      resendId = result.data?.id ?? null;
-      status = input.scheduledFor ? "scheduled" : "sent";
+      if (result.error) {
+        status = "failed";
+        failureReason = result.error.message;
+      } else {
+        resendId = result.data?.id ?? null;
+        status = input.scheduledFor ? "scheduled" : "sent";
+      }
     } catch (err) {
       status = "failed";
       failureReason = err instanceof Error ? err.message : "Unknown error";
@@ -114,6 +123,36 @@ export async function cancelScheduledEmail(logId: string) {
   if (!log || log.status !== "scheduled") return null;
   log.status = "canceled";
   return log;
+}
+
+/**
+ * Sends a one-off platform-level email with no tenant to attribute it to
+ * (contact/support form submissions, admin notifications not tied to a
+ * specific company at send time) — deliberately skips the email_logs write
+ * that sendEmail() does, since that table's company_id is NOT NULL and this
+ * class of email has no company to scope it to. Best-effort: failures are
+ * swallowed so a broken outbound email never blocks the caller's response.
+ */
+export async function sendPlatformEmail(input: { to: string; subject: string; body: string; replyTo?: string }): Promise<void> {
+  const resend = await getClient();
+  if (!resend) {
+    console.log(`[demo email] to=${input.to} subject=${input.subject}\n${input.body}`);
+    return;
+  }
+  try {
+    const result = await resend.emails.send({
+      from: `${env.EMAIL_FROM_NAME} <${env.EMAIL_FROM_ADDRESS}>`,
+      to: input.to,
+      replyTo: input.replyTo ?? env.EMAIL_REPLY_TO,
+      subject: input.subject,
+      text: input.body,
+    });
+    if (result.error) {
+      console.error("sendPlatformEmail failed:", result.error.message);
+    }
+  } catch (err) {
+    console.error("sendPlatformEmail failed:", err instanceof Error ? err.message : err);
+  }
 }
 
 export function renderTemplate(body: string, vars: Record<string, string>): string {

@@ -3,6 +3,7 @@ import { mockStore } from "@/lib/data/store";
 import { id, daysFromNow } from "@/lib/data/ids";
 import { generateToken, hashToken } from "@/lib/utils/token";
 import { runCvScreening } from "@/lib/ai/claude";
+import { recordApplicationSubmitted } from "@/lib/services/usage-tracking";
 import { env } from "@/lib/env";
 import type { AiScreeningResult, Application, ApplicationStage, Candidate, Recommendation } from "@/types/database";
 
@@ -348,10 +349,7 @@ async function submitApplicationLive(companySlug: string, jobId: string, input: 
   if (applicationError) throw applicationError;
 
   await recordPipelineEvent(company.id, application.id, null, "applied", null, "system");
-  await admin.rpc("increment_usage", { p_company_id: company.id, p_metric: "applications" }).then(
-    () => {},
-    () => {}, // increment_usage RPC is optional — usage tracking degrades gracefully if not present yet.
-  );
+  await recordApplicationSubmitted(company.id);
 
   void processApplicationScreening(company.id, application.id);
 
@@ -374,9 +372,6 @@ async function processApplicationScreening(companyId: string, applicationId: str
     await admin.from("ai_screening_results").insert({ ...resultForInsert, application_id: applicationId });
     await admin.from("applications").update({ stage: "cv_screened", stage_updated_at: new Date().toISOString(), recommendation: result.recommendation }).eq("id", applicationId);
     await recordPipelineEvent(companyId, applicationId, "applied", "cv_screened", null, "ai");
-
-    const usage = await admin.rpc("increment_usage", { p_company_id: companyId, p_metric: "ai_screenings" });
-    void usage; // best-effort — screening result is already saved regardless of usage-counter outcome.
     return;
   }
 
@@ -392,9 +387,6 @@ async function processApplicationScreening(companyId: string, applicationId: str
   application.stage_updated_at = new Date().toISOString();
   application.recommendation = result.recommendation;
   await recordPipelineEvent(companyId, applicationId, "applied", "cv_screened", null, "ai");
-
-  const usage = mockStore.usagePeriods.find((u) => u.company_id === companyId);
-  if (usage) usage.ai_screenings += 1;
 }
 
 export async function getApplicationByTrackingToken(token: string) {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/require-session";
-import { cancelSubscription } from "@/lib/services/billing";
+import { cancelSubscription } from "@/lib/services/plan-access";
 
 export async function POST(request: Request) {
   const session = await requireSession("owner");

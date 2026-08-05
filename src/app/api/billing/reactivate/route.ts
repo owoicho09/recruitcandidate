@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/require-session";
-import { reactivateSubscription } from "@/lib/services/billing";
+import { reactivateSubscription } from "@/lib/services/plan-access";
 
 export async function POST() {
   const session = await requireSession("owner");

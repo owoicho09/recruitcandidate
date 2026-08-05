@@ -9,11 +9,14 @@ import { cn } from "@/lib/cn";
 import { formatCurrency } from "@/lib/utils/format";
 import type { Plan } from "@/types/database";
 
-const ANNUAL_DISCOUNT = 0.15;
+const FEATURE_LABELS: Record<string, string> = {
+  live_ai_interviewer: "Live AI interviewer",
+};
 
 export function PricingTable({ plans }: { plans: Plan[] }) {
   const [annual, setAnnual] = React.useState(false);
-  const displayPlans = plans.filter((p) => p.slug !== "enterprise");
+  const interval = annual ? "annual" : "monthly";
+  const displayPlans = plans.filter((p) => p.slug !== "enterprise" && p.interval === interval);
   const enterprise = plans.find((p) => p.slug === "enterprise");
 
   return (
@@ -29,39 +32,32 @@ export function PricingTable({ plans }: { plans: Plan[] }) {
           onClick={() => setAnnual(true)}
           className={cn("rounded-full px-4 py-1.5 text-sm font-medium transition-colors", annual ? "bg-surface text-foreground shadow-sm" : "text-foreground-muted")}
         >
-          Annual <span className="text-accent">— save 15%</span>
+          Annual <span className="text-accent">— 2 months free</span>
         </button>
       </div>
 
       <div className="grid w-full grid-cols-1 gap-6 sm:grid-cols-3">
-        {displayPlans.map((plan) => {
-          const monthlyEquivalent = annual ? Math.round(plan.amount * (1 - ANNUAL_DISCOUNT)) : plan.amount;
-          return (
-            <Card key={plan.id} className={cn("flex flex-col p-6", plan.slug === "growth" && "border-accent ring-1 ring-accent")}>
-              {plan.slug === "growth" && <StatusChip tone="accent" className="mb-3 w-fit">Most popular</StatusChip>}
-              <p className="text-sm font-semibold text-foreground">{plan.name}</p>
-              <p className="mt-2 flex items-baseline gap-1 text-3xl font-semibold text-foreground">
-                {formatCurrency(monthlyEquivalent, plan.currency)}
-                <span className="text-sm font-normal text-foreground-muted">/mo</span>
-              </p>
-              {annual && <p className="text-xs text-foreground-muted">billed annually</p>}
-              <ul className="mt-5 flex flex-col gap-2.5 text-sm text-foreground-muted">
-                <PlanLine label={`${plan.limits.active_jobs} active jobs`} />
-                <PlanLine label={`${plan.limits.applications.toLocaleString()} applications/mo`} />
-                <PlanLine label={`${plan.limits.ai_screenings.toLocaleString()} AI CV screenings/mo`} />
-                <PlanLine label={`${plan.limits.assessment_invitations.toLocaleString()} assessment invitations/mo`} />
-                <PlanLine label={`${plan.limits.video_interview_candidates.toLocaleString()} video interview candidates/mo`} />
-                <PlanLine label={`${plan.limits.team_members} team members`} />
-                {plan.features.map((f) => (
-                  <PlanLine key={f} label={f} />
-                ))}
-              </ul>
-              <Button href="/signup" variant={plan.slug === "growth" ? "primary" : "secondary"} className="mt-6">
-                Start with {plan.name}
-              </Button>
-            </Card>
-          );
-        })}
+        {displayPlans.map((plan) => (
+          <Card key={plan.id} className={cn("flex flex-col p-6", plan.slug === "growth" && "border-accent ring-1 ring-accent")}>
+            {plan.slug === "growth" && <StatusChip tone="accent" className="mb-3 w-fit">Most popular</StatusChip>}
+            <p className="text-sm font-semibold text-foreground">{plan.name}</p>
+            <p className="mt-2 flex items-baseline gap-1 text-3xl font-semibold text-foreground">
+              {formatCurrency(plan.amount, plan.currency)}
+              <span className="text-sm font-normal text-foreground-muted">/{annual ? "yr" : "mo"}</span>
+            </p>
+            <ul className="mt-5 flex flex-col gap-2.5 text-sm text-foreground-muted">
+              <PlanLine label={`${plan.limits.active_jobs} active jobs`} />
+              <PlanLine label={`${plan.limits.applications.toLocaleString()} applications/period`} />
+              <PlanLine label={`${plan.limits.team_members} team members`} />
+              {plan.features.map((f) => (
+                <PlanLine key={f} label={FEATURE_LABELS[f] ?? f} />
+              ))}
+            </ul>
+            <Button href="/signup" variant={plan.slug === "growth" ? "primary" : "secondary"} className="mt-6">
+              Start with {plan.name}
+            </Button>
+          </Card>
+        ))}
       </div>
 
       {enterprise && (

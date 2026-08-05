@@ -3,7 +3,7 @@ import { signupSchema } from "@/lib/validation/auth";
 import { mockStore } from "@/lib/data/store";
 import { id } from "@/lib/data/ids";
 import { setDemoSession } from "@/lib/auth/session";
-import { initializeTransaction } from "@/lib/billing/paystack";
+import { sendEmail } from "@/lib/email/resend";
 import { env, DEMO_MODE } from "@/lib/env";
 import { templateDefaults } from "@/lib/data/fixtures";
 import type { Company, CompanyMember } from "@/types/database";
@@ -16,28 +16,19 @@ export async function POST(request: Request) {
   }
   const input = parsed.data;
 
-  // Validate the plan before creating any account — creating the account first
-  // and validating after would leave an orphaned company/user on an invalid planId.
-  const plan = DEMO_MODE
-    ? mockStore.plans.find((p) => p.id === input.planId)
-    : await getLivePlan(input.planId);
-  if (!plan) return NextResponse.json({ error: "Select a valid plan." }, { status: 400 });
-
-  const { companyId, userId, error } = DEMO_MODE ? await createDemoAccount(input) : await createLiveAccount(input);
+  const { companyId, error } = DEMO_MODE ? await createDemoAccount(input) : await createLiveAccount(input);
   if (error) return NextResponse.json({ error }, { status: 409 });
 
-  const reference = `signup_${id()}`;
-  const { authorizationUrl } = await initializeTransaction({
-    email: input.workEmail,
-    planCode: plan.paystack_plan_code,
-    reference,
-    callbackUrl: env.PAYSTACK_CALLBACK_URL,
-    metadata: { company_id: companyId!, user_id: userId!, plan_id: plan.id },
-  });
+  await notifySignup(companyId!, input.workEmail, input.firstName, input.companyName);
 
-  return NextResponse.json({ redirectUrl: authorizationUrl });
+  return NextResponse.json({ ok: true });
 }
 
+/**
+ * No subscription is created at signup — accounts can explore the dashboard
+ * immediately, and job creation/publishing is gated on choosing a plan from
+ * the billing page (see plan-access service's hasActiveSubscription check).
+ */
 async function createDemoAccount(input: ReturnType<typeof signupSchema.parse>) {
   if (mockStore.users.some((u) => u.email.toLowerCase() === input.workEmail.toLowerCase())) {
     return { error: "An account with this email already exists." };
@@ -115,27 +106,6 @@ async function createDemoAccount(input: ReturnType<typeof signupSchema.parse>) {
 
   await setDemoSession({ userId, email: input.workEmail, fullName: member.full_name, companyId, companySlug: company.slug, role: "owner" });
 
-  // Pending subscription so the billing callback (or webhook, in production) knows which
-  // plan to activate once payment is confirmed — see spec Part K §23 "First Subscription Flow".
-  mockStore.subscriptions.push({
-    id: id(),
-    company_id: companyId,
-    plan_id: input.planId,
-    paystack_customer_code: null,
-    paystack_subscription_code: null,
-    paystack_email_token: null,
-    status: "pending",
-    period_start: now,
-    period_end: now,
-    next_payment_date: null,
-    cancel_at_period_end: false,
-    grace_period_end: null,
-    canceled_at: null,
-    cancellation_reason: null,
-    created_at: now,
-    updated_at: now,
-  });
-
   return { companyId, userId, error: null };
 }
 
@@ -203,19 +173,6 @@ async function createLiveAccount(input: ReturnType<typeof signupSchema.parse>) {
     templateDefaults.map((t) => ({ company_id: company.id, type: t.type, subject: t.subject, body: t.body, signature: "", enabled: true, version: 1 })),
   );
 
-  const { error: subscriptionError } = await admin.from("subscriptions").insert({
-    company_id: company.id,
-    plan_id: input.planId,
-    status: "pending",
-    period_start: now,
-    period_end: now,
-  });
-  if (subscriptionError) {
-    await admin.auth.admin.deleteUser(userId);
-    await admin.from("companies").delete().eq("id", company.id);
-    return { error: "Couldn't create your subscription. Please try again." };
-  }
-
   // Sign in for real through the cookie-bound client so sb-* session cookies land on the response.
   const supabase = await createServerSupabaseClient();
   const { error: signInError } = await supabase.auth.signInWithPassword({ email: input.workEmail, password: input.password });
@@ -224,9 +181,24 @@ async function createLiveAccount(input: ReturnType<typeof signupSchema.parse>) {
   return { companyId: company.id, userId, error: null };
 }
 
-async function getLivePlan(planId: string) {
-  const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
-  const admin = createAdminSupabaseClient();
-  const { data } = await admin.from("plans").select("*").eq("id", planId).maybeSingle();
-  return data;
+async function notifySignup(companyId: string, workEmail: string, firstName: string, companyName: string) {
+  const supportEmail = env.EMAIL_SUPPORT_ADDRESS;
+
+  await sendEmail({
+    companyId,
+    type: "welcome",
+    to: workEmail,
+    subject: `Welcome to ${env.NEXT_PUBLIC_APP_NAME}, ${firstName}`,
+    body: `Hi ${firstName},\n\nYour workspace "${companyName}" is ready. You can explore your dashboard right away — post a job, set up your career page, and invite your team. To start publishing jobs and receiving applications, pick a plan from the Billing page whenever you're ready.\n\nNeed help getting started? Just reply to this email or reach us at ${supportEmail} — we're happy to help.\n\nWelcome aboard,\nThe ${env.NEXT_PUBLIC_APP_NAME} Team`,
+  });
+
+  if (env.EMAIL_ADMIN_NOTIFY) {
+    await sendEmail({
+      companyId,
+      type: "admin_new_signup_notification",
+      to: env.EMAIL_ADMIN_NOTIFY,
+      subject: `New signup: ${companyName}`,
+      body: `New workspace created.\n\nCompany: ${companyName}\nOwner: ${firstName} (${workEmail})\n\nNo plan selected yet — they'll choose one from the billing page.`,
+    });
+  }
 }

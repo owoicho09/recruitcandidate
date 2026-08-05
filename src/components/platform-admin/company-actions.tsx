@@ -39,7 +39,7 @@ export function CompanyActions({ companyId, subscription, plans, currentPlanId }
       <Select value={currentPlanId} onValueChange={changePlan} disabled={busy}>
         <SelectTrigger className="w-44"><SelectValue placeholder="Change plan" /></SelectTrigger>
         <SelectContent>
-          {plans.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+          {plans.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} ({p.interval})</SelectItem>)}
         </SelectContent>
       </Select>
       {subscription?.status === "canceled" ? (

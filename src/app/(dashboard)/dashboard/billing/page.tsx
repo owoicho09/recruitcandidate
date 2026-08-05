@@ -1,18 +1,21 @@
 import type { Metadata } from "next";
 import { requireSession } from "@/lib/auth/require-session";
-import { getSubscription, getPlanForCompany, getCurrentUsage, listPlans, listPayments } from "@/lib/services/billing";
+import { getSubscription, getPlanForCompany, listPlans, listPayments, listAddonProducts, listCompanyAddons } from "@/lib/services/plan-access";
+import { getUsageSummary } from "@/lib/services/usage-tracking";
 import { BillingDashboard } from "@/components/dashboard/billing-dashboard";
 
 export const metadata: Metadata = { title: "Billing" };
 
 export default async function BillingPage() {
   const session = await requireSession();
-  const [subscription, plan, usage, plans, payments] = await Promise.all([
+  const [subscription, plan, plans, payments, addonProducts, companyAddons, usage] = await Promise.all([
     getSubscription(session.companyId),
     getPlanForCompany(session.companyId),
-    getCurrentUsage(session.companyId),
     listPlans(),
     listPayments(session.companyId),
+    listAddonProducts(),
+    listCompanyAddons(session.companyId, "active"),
+    getUsageSummary(session.companyId),
   ]);
 
   return (
@@ -21,7 +24,16 @@ export default async function BillingPage() {
         <h1 className="text-xl font-semibold text-foreground">Billing</h1>
         <p className="text-sm text-foreground-muted">Manage your plan, usage, and payment history.</p>
       </div>
-      <BillingDashboard subscription={subscription} plan={plan} usage={usage} plans={plans} payments={payments} canManage={session.role === "owner"} />
+      <BillingDashboard
+        subscription={subscription}
+        plan={plan}
+        plans={plans}
+        payments={payments}
+        addonProducts={addonProducts}
+        companyAddons={companyAddons}
+        usage={usage}
+        canManage={session.role === "owner"}
+      />
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Menu, LogOut, Settings, ChevronDown, ExternalLink } from "lucide-react";
+import { Menu, X, LogOut, Settings, ChevronDown, ExternalLink, LifeBuoy } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { StatusChip } from "@/components/ui/status-chip";
 import {
@@ -68,6 +68,11 @@ export function Topbar({
             <DropdownMenuItem asChild>
               <Link href="/dashboard/settings"><Settings className="size-4" /> Settings</Link>
             </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/support" target="_blank">
+                <LifeBuoy className="size-4" /> Contact support
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <form action="/api/auth/logout" method="POST" className="w-full">
@@ -83,7 +88,14 @@ export function Topbar({
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
-          <Sidebar className="absolute left-0 top-0 h-full" />
+          <Sidebar className="absolute left-0 top-0 h-full max-w-[80vw] shadow-xl" onNavigate={() => setMobileOpen(false)} />
+          <button
+            className="absolute right-4 top-4 rounded-md bg-surface p-2 text-foreground-muted shadow-sm hover:bg-surface-muted"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close menu"
+          >
+            <X className="size-5" />
+          </button>
         </div>
       )}
     </header>

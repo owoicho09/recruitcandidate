@@ -25,6 +25,8 @@ import type {
   ApplicationStage,
   Recommendation,
   EmailTemplateType,
+  AddonProduct,
+  CompanyAddon,
 } from "@/types/database";
 
 const COMPANY_ID = "11111111-1111-4111-8111-111111111111";
@@ -90,68 +92,67 @@ export const companyMembers: CompanyMember[] = Object.values(DEMO_USERS).map((u,
   joined_at: daysAgo(170 - i * 5),
 }));
 
-export const plans: Plan[] = [
-  {
-    id: "plan-starter",
-    name: "Starter",
-    slug: "starter",
-    currency: "NGN",
-    amount: 20000,
-    interval: "monthly",
-    paystack_plan_code: "PLN_starter_monthly",
-    limits: { active_jobs: 3, applications: 200, ai_screenings: 200, assessment_invitations: 30, video_interview_candidates: 20, team_members: 2 },
-    features: ["Branded career page", "Standard email templates", "3-month video retention"],
-    active: true,
-    created_at: daysAgo(365),
-  },
-  {
-    id: "plan-growth",
-    name: "Growth",
-    slug: "growth",
-    currency: "NGN",
-    amount: 50000,
-    interval: "monthly",
-    paystack_plan_code: "PLN_growth_monthly",
-    limits: { active_jobs: 10, applications: 1000, ai_screenings: 1000, assessment_invitations: 200, video_interview_candidates: 100, team_members: 5 },
-    features: ["Candidate comparison", "Adjustable screening weights", "Editable email templates", "12-month video retention"],
-    active: true,
-    created_at: daysAgo(365),
-  },
-  {
-    id: "plan-pro",
-    name: "Pro",
-    slug: "pro",
-    currency: "NGN",
-    amount: 100000,
-    interval: "monthly",
-    paystack_plan_code: "PLN_pro_monthly",
-    limits: { active_jobs: 30, applications: 5000, ai_screenings: 5000, assessment_invitations: 1000, video_interview_candidates: 500, team_members: 15 },
-    features: ["Advanced analytics", "Priority processing", "Longer retention", "Custom branding controls", "Priority support"],
-    active: true,
-    created_at: daysAgo(365),
-  },
-  {
-    id: "plan-enterprise",
-    name: "Enterprise",
-    slug: "enterprise",
-    currency: "NGN",
-    amount: 0,
-    interval: "monthly",
-    paystack_plan_code: "",
-    limits: { active_jobs: 999, applications: 999999, ai_screenings: 999999, assessment_invitations: 999999, video_interview_candidates: 999999, team_members: 999 },
-    features: ["Recruitment agency workspaces", "Custom domain", "SSO", "Custom retention", "Dedicated support"],
-    active: true,
-    created_at: daysAgo(365),
-  },
+const starterFeatures = [
+  "Branded company career page", "Job creation and publishing", "Candidate application forms",
+  "CV upload and applicant database", "AI CV screening", "Applicant pipeline", "Assessments",
+  "Prerecorded video interviews", "Video transcription and AI analysis", "Qualified candidates section",
+  "Rejection feedback drafts", "Email notifications and reminders",
 ];
+const growthFeatures = [
+  "Everything in Starter", "live_ai_interviewer", "Candidate comparison", "Adjustable CV screening criteria",
+  "Custom email templates", "Advanced applicant filters", "Recruitment analytics",
+  "Bulk assessment invitations", "Bulk video interview invitations", "Priority support",
+];
+const scaleFeatures = [
+  "Everything in Growth", "live_ai_interviewer", "Bulk candidate actions", "Bulk stage movement",
+  "Deeper recruitment analytics", "Priority AI processing", "Priority transcription",
+  "Longer video retention", "Higher export limits", "Priority WhatsApp and email support",
+];
+const enterpriseFeatures = [
+  "Everything in Scale", "live_ai_interviewer", "Multiple branches", "Recruitment agency workspaces",
+  "Custom domains", "SSO", "Custom retention", "Dedicated onboarding", "Custom reporting",
+  "Higher live AI interview usage",
+];
+
+function planPair(idPrefix: string, name: string, slug: Plan["slug"], monthlyAmount: number, limits: Plan["limits"], features: string[]): Plan[] {
+  return [
+    { id: `${idPrefix}-monthly`, name, slug, currency: "NGN", amount: monthlyAmount, interval: "monthly", paystack_plan_code: "", limits, features, active: true, created_at: daysAgo(365) },
+    { id: `${idPrefix}-annual`, name, slug, currency: "NGN", amount: monthlyAmount * 10, interval: "annual", paystack_plan_code: "", limits, features, active: true, created_at: daysAgo(365) },
+  ];
+}
+
+export const plans: Plan[] = [
+  ...planPair("plan-starter", "Starter", "starter", 20000, { active_jobs: 5, applications: 300, team_members: 3 }, starterFeatures),
+  ...planPair("plan-growth", "Growth", "growth", 50000, { active_jobs: 15, applications: 1500, team_members: 8 }, growthFeatures),
+  ...planPair("plan-scale", "Scale", "scale", 100000, { active_jobs: 30, applications: 5000, team_members: 20 }, scaleFeatures),
+  ...planPair("plan-enterprise", "Enterprise", "enterprise", 0, { active_jobs: 999999, applications: 999999, team_members: 999999 }, enterpriseFeatures),
+];
+
+export const addonProducts: AddonProduct[] = [
+  { id: "addon-jobs-5", sku: "extra_jobs_5", name: "5 extra active jobs", kind: "active_jobs", billing_type: "recurring", quantity: 5, amount: 10000, currency: "NGN", min_plan_slug: null, active: true, created_at: daysAgo(365) },
+  { id: "addon-jobs-10", sku: "extra_jobs_10", name: "10 extra active jobs", kind: "active_jobs", billing_type: "recurring", quantity: 10, amount: 18000, currency: "NGN", min_plan_slug: null, active: true, created_at: daysAgo(365) },
+  { id: "addon-jobs-20", sku: "extra_jobs_20", name: "20 extra active jobs", kind: "active_jobs", billing_type: "recurring", quantity: 20, amount: 30000, currency: "NGN", min_plan_slug: null, active: true, created_at: daysAgo(365) },
+  { id: "addon-apps-500", sku: "extra_applications_500", name: "500 extra applications", kind: "applications", billing_type: "one_time", quantity: 500, amount: 15000, currency: "NGN", min_plan_slug: null, active: true, created_at: daysAgo(365) },
+  { id: "addon-apps-1000", sku: "extra_applications_1000", name: "1,000 extra applications", kind: "applications", billing_type: "one_time", quantity: 1000, amount: 25000, currency: "NGN", min_plan_slug: null, active: true, created_at: daysAgo(365) },
+  { id: "addon-apps-2500", sku: "extra_applications_2500", name: "2,500 extra applications", kind: "applications", billing_type: "one_time", quantity: 2500, amount: 50000, currency: "NGN", min_plan_slug: null, active: true, created_at: daysAgo(365) },
+  { id: "addon-apps-5000", sku: "extra_applications_5000", name: "5,000 extra applications", kind: "applications", billing_type: "one_time", quantity: 5000, amount: 85000, currency: "NGN", min_plan_slug: null, active: true, created_at: daysAgo(365) },
+  { id: "addon-team-3", sku: "extra_team_members_3", name: "3 extra team members", kind: "team_members", billing_type: "recurring", quantity: 3, amount: 5000, currency: "NGN", min_plan_slug: null, active: true, created_at: daysAgo(365) },
+  { id: "addon-team-10", sku: "extra_team_members_10", name: "10 extra team members", kind: "team_members", billing_type: "recurring", quantity: 10, amount: 15000, currency: "NGN", min_plan_slug: null, active: true, created_at: daysAgo(365) },
+  { id: "addon-ai-10", sku: "live_ai_credits_10", name: "10 live AI interview credits", kind: "live_ai_interviews", billing_type: "one_time", quantity: 10, amount: 8000, currency: "NGN", min_plan_slug: "growth", active: true, created_at: daysAgo(365) },
+  { id: "addon-ai-25", sku: "live_ai_credits_25", name: "25 live AI interview credits", kind: "live_ai_interviews", billing_type: "one_time", quantity: 25, amount: 18000, currency: "NGN", min_plan_slug: "growth", active: true, created_at: daysAgo(365) },
+  { id: "addon-ai-50", sku: "live_ai_credits_50", name: "50 live AI interview credits", kind: "live_ai_interviews", billing_type: "one_time", quantity: 50, amount: 32000, currency: "NGN", min_plan_slug: "growth", active: true, created_at: daysAgo(365) },
+];
+
+export const companyAddons: CompanyAddon[] = [];
 
 export const subscription: Subscription = {
   id: "sub-1",
   company_id: COMPANY_ID,
-  plan_id: "plan-growth",
+  plan_id: "plan-growth-monthly",
   paystack_customer_code: "CUS_demo123",
   paystack_subscription_code: "SUB_demo123",
   paystack_email_token: "demo-email-token",
+  paystack_authorization_code: "AUTH_demo123",
   status: "active",
   period_start: daysAgo(12),
   period_end: daysFromNow(18),
@@ -170,12 +171,8 @@ export const usagePeriod: UsagePeriod = {
   subscription_id: "sub-1",
   period_start: daysAgo(12),
   period_end: daysFromNow(18),
-  active_jobs: 3,
-  applications: 0,
-  ai_screenings: 0,
-  assessment_invitations: 0,
-  video_interview_candidates: 0,
-  team_members: companyMembers.length,
+  applications: 42,
+  live_ai_interview_credits: 10,
   storage_bytes: 480_000_000,
 };
 
@@ -677,9 +674,6 @@ seedPlans.forEach((plan, index) => {
 });
 
 usagePeriod.applications = applications.length;
-usagePeriod.ai_screenings = aiScreeningResults.length;
-usagePeriod.assessment_invitations = assessmentAttempts.length;
-usagePeriod.video_interview_candidates = videoInterviewAttempts.length;
 
 // ---- Email templates (defaults) ----
 

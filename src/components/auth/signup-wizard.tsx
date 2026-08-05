@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Check } from "lucide-react";
@@ -9,21 +10,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { StatusChip } from "@/components/ui/status-chip";
 import { cn } from "@/lib/cn";
 import { slugify } from "@/lib/utils/slug";
-import { formatCurrency } from "@/lib/utils/format";
-import type { Plan } from "@/types/database";
 
-const STEPS = ["Account", "Company", "Plan"] as const;
+const STEPS = ["Account", "Company"] as const;
 
 const STEP_FIELDS: Record<number, (keyof SignupInput)[]> = {
   0: ["firstName", "lastName", "workEmail", "password"],
   1: ["companyName", "slug", "industry", "size", "country", "city", "contactEmail", "brandColor", "timezone"],
-  2: ["planId", "interval"],
 };
 
-export function SignupWizard({ plans }: { plans: Plan[] }) {
+export function SignupWizard() {
+  const router = useRouter();
   const [step, setStep] = React.useState(0);
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [slugStatus, setSlugStatus] = React.useState<"idle" | "checking" | "available" | "taken">("idle");
@@ -38,7 +36,7 @@ export function SignupWizard({ plans }: { plans: Plan[] }) {
     formState: { errors, isSubmitting },
   } = useForm<SignupInput>({
     resolver: zodResolver(signupSchema),
-    defaultValues: { interval: "monthly", brandColor: "#3730a3", timezone: "Africa/Lagos", planId: plans.find((p) => p.slug === "growth")?.id ?? plans[0]?.id },
+    defaultValues: { brandColor: "#3730a3", timezone: "Africa/Lagos" },
   });
 
   const companyName = watch("companyName");
@@ -74,8 +72,7 @@ export function SignupWizard({ plans }: { plans: Plan[] }) {
       setServerError(data.error ?? "Something went wrong.");
       return;
     }
-    // Full page navigation to a Paystack-hosted (or demo callback) URL, triggered by form submit.
-    window.location.href = data.redirectUrl;
+    router.push("/dashboard?onboarding=1");
   }
 
   return (
@@ -103,7 +100,7 @@ export function SignupWizard({ plans }: { plans: Plan[] }) {
 
             {step === 0 && (
               <>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Field label="First name" htmlFor="firstName" required error={errors.firstName?.message}>
                     <Input id="firstName" {...register("firstName")} />
                   </Field>
@@ -141,7 +138,7 @@ export function SignupWizard({ plans }: { plans: Plan[] }) {
                 <Field label="Description" htmlFor="description" error={errors.description?.message}>
                   <Textarea id="description" rows={2} {...register("description")} />
                 </Field>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Field label="Industry" htmlFor="industry" required error={errors.industry?.message}>
                     <Input id="industry" {...register("industry")} />
                   </Field>
@@ -154,7 +151,7 @@ export function SignupWizard({ plans }: { plans: Plan[] }) {
                     </Select>
                   </Field>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Field label="Country" htmlFor="country" required error={errors.country?.message}>
                     <Input id="country" {...register("country")} />
                   </Field>
@@ -171,36 +168,10 @@ export function SignupWizard({ plans }: { plans: Plan[] }) {
                 <Field label="Brand accent color" htmlFor="brandColor" error={errors.brandColor?.message}>
                   <input id="brandColor" type="color" className="h-10 w-16 rounded-lg border border-border-strong bg-surface p-1" {...register("brandColor")} />
                 </Field>
-              </>
-            )}
-
-            {step === 2 && (
-              <div className="flex flex-col gap-3">
-                {plans.filter((p) => p.slug !== "enterprise").map((plan) => (
-                  <label
-                    key={plan.id}
-                    className={cn(
-                      "flex cursor-pointer items-center justify-between rounded-lg border p-4 transition-colors",
-                      watch("planId") === plan.id ? "border-accent bg-accent-soft" : "border-border-strong hover:border-accent/50",
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input type="radio" value={plan.id} {...register("planId")} className="accent-[var(--color-accent)]" />
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{plan.name}</p>
-                        <p className="text-xs text-foreground-muted">{plan.limits.active_jobs} active jobs · {plan.limits.applications.toLocaleString()} applications/mo</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {plan.slug === "growth" && <StatusChip tone="accent">Recommended</StatusChip>}
-                      <p className="text-sm font-semibold text-foreground">{formatCurrency(plan.amount, plan.currency)}/mo</p>
-                    </div>
-                  </label>
-                ))}
                 <p className="text-xs text-foreground-muted">
-                  You&apos;ll confirm payment with Paystack on the next step. In demo mode this activates instantly.
+                  You&apos;ll land straight in your dashboard — pick a plan whenever you&apos;re ready to publish jobs.
                 </p>
-              </div>
+              </>
             )}
 
             <div className="mt-2 flex items-center justify-between">
@@ -210,7 +181,7 @@ export function SignupWizard({ plans }: { plans: Plan[] }) {
               {step < STEPS.length - 1 ? (
                 <Button type="button" onClick={next}>Continue</Button>
               ) : (
-                <Button type="submit" loading={isSubmitting}>Subscribe & create workspace</Button>
+                <Button type="submit" loading={isSubmitting}>Create workspace</Button>
               )}
             </div>
           </form>

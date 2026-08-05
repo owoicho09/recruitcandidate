@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { applicationSchema } from "@/lib/validation/application";
 import { submitApplication } from "@/lib/services/applications";
-import { checkUsage } from "@/lib/services/billing";
+import { checkUsage } from "@/lib/services/usage-tracking";
 import { getCompanyBySlug } from "@/lib/services/companies";
 import { getJob } from "@/lib/services/jobs";
 import { sendEmail, getTemplate, renderTemplate } from "@/lib/email/resend";
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
 
   const usage = await checkUsage(company.id, "applications");
   if (!usage.allowed) {
-    return NextResponse.json({ error: "This company has reached its application limit for the current period." }, { status: 429 });
+    return NextResponse.json({ error: "Applications for this role are temporarily unavailable. Please check back later or contact the company directly." }, { status: 429 });
   }
 
   const input = parsed.data;

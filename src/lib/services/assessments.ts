@@ -95,9 +95,6 @@ export async function sendAssessmentInvite(companyId: string, applicationId: str
 
     await supabase.from("applications").update({ stage: "assessment", stage_updated_at: new Date().toISOString() }).eq("id", applicationId);
 
-    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
-    await createAdminSupabaseClient().rpc("increment_usage", { p_company_id: companyId, p_metric: "assessment_invitations" });
-
     return { attempt: attempt as AssessmentAttempt, token };
   }
 
@@ -125,9 +122,6 @@ export async function sendAssessmentInvite(companyId: string, applicationId: str
   mockStore.assessmentAttempts.push(attempt);
   application.stage = "assessment";
   application.stage_updated_at = new Date().toISOString();
-
-  const usage = mockStore.usagePeriods.find((u) => u.company_id === companyId);
-  if (usage) usage.assessment_invitations += 1;
 
   return { attempt, token };
 }

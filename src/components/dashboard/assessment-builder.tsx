@@ -118,7 +118,7 @@ function QuestionEditor({
             <Trash2 className="size-4" />
           </button>
         </div>
-        <div className="ml-7 grid grid-cols-3 gap-3">
+        <div className="ml-7 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Controller name={`questions.${index}.type`} control={control} render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
               <SelectTrigger><SelectValue /></SelectTrigger>

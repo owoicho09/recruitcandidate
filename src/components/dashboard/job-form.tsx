@@ -71,6 +71,11 @@ export function JobForm({ job }: { job?: Job }) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      if (data.requiresPlan) {
+        toast.error("Choose a plan first", "You'll need an active plan before creating jobs.");
+        router.push("/dashboard/billing");
+        return;
+      }
       toast.error("Couldn't save job", data.error);
       return;
     }
@@ -97,7 +102,7 @@ export function JobForm({ job }: { job?: Job }) {
               <Field label="Slug" htmlFor="slug" required error={errors.slug?.message} hint={`/[company]/careers/${watch("slug") || "..."}`}>
                 <Input id="slug" {...register("slug")} onChange={(e) => { setSlugTouched(true); register("slug").onChange(e); }} />
               </Field>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Department" htmlFor="department" required error={errors.department?.message}>
                   <Input id="department" {...register("department")} />
                 </Field>
@@ -105,7 +110,7 @@ export function JobForm({ job }: { job?: Job }) {
                   <Input id="location" {...register("location")} />
                 </Field>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Work arrangement" htmlFor="work_arrangement">
                   <Controller name="work_arrangement" control={control} render={({ field }) => (
                     <Select value={field.value} onValueChange={field.onChange}>
@@ -133,7 +138,7 @@ export function JobForm({ job }: { job?: Job }) {
                   )} />
                 </Field>
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <Field label="Salary min" htmlFor="salary_min" hint="Optional">
                   <Input id="salary_min" type="number" {...register("salary_min")} />
                 </Field>
@@ -150,7 +155,7 @@ export function JobForm({ job }: { job?: Job }) {
               <Field label="Description" htmlFor="description" required error={errors.description?.message}>
                 <Textarea id="description" rows={5} {...register("description")} />
               </Field>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Openings" htmlFor="openings_count" required error={errors.openings_count?.message}>
                   <Input id="openings_count" type="number" min={1} {...register("openings_count")} />
                 </Field>
@@ -180,7 +185,7 @@ export function JobForm({ job }: { job?: Job }) {
                   <TagListInput value={field.value} onChange={field.onChange} placeholder="Add a preferred skill" />
                 )} />
               </Field>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Minimum experience (years)" htmlFor="min_experience" hint="Optional">
                   <Input id="min_experience" type="number" {...register("min_experience")} />
                 </Field>

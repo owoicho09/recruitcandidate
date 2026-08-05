@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/require-session";
 import { inviteMember } from "@/lib/services/team";
-import { checkUsage } from "@/lib/services/billing";
+import { checkUsage } from "@/lib/services/usage-tracking";
 
 const schema = z.object({
   email: z.string().email(),

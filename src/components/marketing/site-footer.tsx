@@ -14,8 +14,9 @@ const columns = [
   {
     title: "Company",
     links: [
-      { href: "/contact", label: "Contact" },
-      { href: "/signup", label: "Start hiring" },
+      { href: "/contact", label: "Contact sales" },
+      { href: "/support", label: "Support" },
+      { href: "/signup", label: "Create your account" },
       { href: "/login", label: "Log in" },
     ],
   },

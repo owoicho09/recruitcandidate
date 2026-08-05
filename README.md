@@ -44,12 +44,20 @@ Platform admin console: `/platform-admin`, any email/password when
 
 ## Going live
 
-1. Create a Supabase project, run the SQL in `supabase/migrations` in order,
-   then `supabase/seed.sql`.
+1. Create a Supabase project, then run `node scripts/run-migrations.mjs`
+   (`SUPABASE_DB_URL` pointed at the project's pooler connection string) —
+   idempotent, applies `supabase/migrations` in order and seeds plans/add-ons.
 2. Fill in `.env.local` (copy from `.env.example`): Supabase URL/keys, an
-   Anthropic (Claude) key, a Resend key, and Paystack keys + plan codes.
-3. Set `NEXT_PUBLIC_DEMO_MODE=false`.
-4. Each service module under `src/lib/services/*` and `src/lib/ai`,
+   Anthropic (Claude) key, a Resend key, and Paystack keys.
+3. Create the 6 subscription Plan objects (Starter/Growth/Scale × monthly/annual)
+   in the Paystack dashboard, paste their codes into the `PAYSTACK_*_PLAN_CODE`
+   vars, then run `node scripts/sync-plan-codes.mjs` to push them into the
+   `plans` table — that DB row, not the env var, is what checkout reads.
+   Add-ons and credit packs don't need Paystack Plan codes (they're one-time
+   transactions or ride the base subscription's renewal — see
+   `src/app/api/webhooks/paystack/route.ts`).
+4. Set `NEXT_PUBLIC_DEMO_MODE=false`.
+5. Each service module under `src/lib/services/*` and `src/lib/ai`,
    `src/lib/email`, `src/lib/billing` checks `src/lib/env.ts`'s `flags` object
    and switches to its live branch automatically — no UI code changes needed.
    `src/lib/services/jobs.ts` is the reference pattern for the Supabase branch;

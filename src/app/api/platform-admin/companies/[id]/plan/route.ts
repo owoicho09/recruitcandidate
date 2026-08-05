@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPlatformAdminSession } from "@/lib/auth/platform-admin";
-import { getPlan, setSubscriptionPlan } from "@/lib/services/billing";
+import { getPlan, setSubscriptionPlan } from "@/lib/services/plan-access";
 
 export async function POST(request: Request, { params }: RouteContext<"/api/platform-admin/companies/[id]/plan">) {
   const admin = await getPlatformAdminSession();

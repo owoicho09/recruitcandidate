@@ -1,0 +1,214 @@
+Use this tighter prompt:
+
+---
+
+Update the existing RecruitCandidates pricing, subscription plans, add-ons, billing page, pricing page and usage enforcement.
+
+Keep the current product and design. Do not add unrelated features. Keep the plan differences focused on actual value, usage and access.
+
+The final plans should be:
+
+## Starter — ₦20,000/month or ₦200,000/year
+
+Include:
+
+* 5 active jobs
+* 300 applications per billing period
+* 3 team members
+* Branded company career page
+* Job creation and publishing
+* Candidate application forms
+* CV upload and applicant database
+* AI CV screening
+* Applicant pipeline
+* Assessments
+* Prerecorded video interviews
+* Video transcription and AI analysis
+* Qualified candidates section
+* Rejection feedback drafts
+* Email notifications and reminders
+
+Starter does not include the live AI interviewer.
+
+## Growth — ₦50,000/month or ₦500,000/year
+
+Include:
+
+* 15 active jobs
+* 1,500 applications per billing period
+* 8 team members
+* Everything in Starter
+* Live AI interviewer
+* Candidate comparison
+* Adjustable CV screening criteria
+* Custom email templates
+* Advanced applicant filters
+* Recruitment analytics
+* Bulk assessment invitations
+* Bulk video interview invitations
+* Priority support
+
+Live AI interviews should be available on Growth.
+
+Do not count live AI interviews inside the normal application allowance. Handle them as separate usage credits.
+
+## Scale — ₦100,000/month or ₦1,000,000/year
+
+Include:
+
+* 30 active jobs
+* 5,000 applications per billing period
+* 20 team members
+* Everything in Growth
+* Higher live AI interview usage
+* Bulk candidate actions
+* Bulk stage movement
+* Deeper recruitment analytics
+* Priority AI processing
+* Priority transcription
+* Longer video retention
+* Higher export limits
+* Priority WhatsApp and email support
+
+## Enterprise — Custom pricing
+
+For companies that need:
+
+* More than 30 active jobs
+* More than 5,000 applications
+* More than 20 team members
+* Multiple branches
+* Recruitment agency workspaces
+* Custom domains
+* SSO
+* Custom retention
+* Dedicated onboarding
+* Custom reporting
+* Higher live AI interview usage
+
+Use a “Contact sales” CTA.
+
+Annual pricing should give two months free.
+
+An active job means a published role currently accepting applications.
+
+Do not count draft, paused, closed or archived jobs.
+
+One application should be counted once when a valid application is submitted.
+
+That application allowance should cover:
+
+* CV upload
+* CV parsing
+* AI screening
+* Assessment
+* Prerecorded video interview
+* Transcription
+* AI video analysis
+* Email communication
+* Candidate movement through the pipeline
+
+Do not count the same candidate again when they complete another stage.
+
+Add these recurring active-job add-ons:
+
+* 5 extra active jobs — ₦10,000 per billing period
+* 10 extra active jobs — ₦18,000 per billing period
+* 20 extra active jobs — ₦30,000 per billing period
+
+Add these one-time application add-ons for the current billing period:
+
+* 500 applications — ₦15,000
+* 1,000 applications — ₦25,000
+* 2,500 applications — ₦50,000
+* 5,000 applications — ₦85,000
+
+Application credits should expire at the end of the current billing period and should not roll over.
+
+Add these recurring team-member add-ons:
+
+* 3 extra team members — ₦5,000 per billing period
+* 10 extra team members — ₦15,000 per billing period
+
+Create live AI interview credit packages for Growth, Scale and Enterprise:
+
+* 10 live AI interviews
+* 25 live AI interviews
+* 50 live AI interviews
+
+Keep the live AI interview prices configurable in the database for now.
+
+Add a 5% application grace allowance.
+
+Show usage warnings at:
+
+* 80%
+* 95%
+* 100%
+
+When a company exhausts its plan allowance, purchased credits and grace allowance:
+
+* Keep the dashboard accessible
+* Keep existing applicants accessible
+* Stop accepting new applications
+* Show options to buy more applications or upgrade
+
+The candidate-facing message should say:
+
+“Applications for this role are temporarily unavailable. Please check back later or contact the company directly.”
+
+Update:
+
+* Public pricing page
+* Monthly/yearly toggle
+* Billing dashboard
+* Usage bars
+* Paystack checkout
+* Paystack subscriptions
+* Add-on purchases
+* Upgrade flow
+* Downgrade flow
+* Cancellation flow
+* Failed-payment grace period
+* Plan limits
+* Feature access
+* Database seed data
+* `.env.example`
+* Platform-admin billing view
+
+The billing dashboard should show:
+
+* Current plan
+* Billing cycle
+* Next payment date
+* Subscription status
+* Active jobs used
+* Applications used
+* Team members used
+* Live AI interview credits
+* Purchased add-ons
+* Payment history
+* Upgrade
+* Downgrade
+* Cancel
+* Buy more jobs
+* Buy more applications
+* Buy more team seats
+
+Use Paystack.
+
+Do not activate plans or add-ons from the browser callback alone.
+
+Verify payments server-side and use verified Paystack webhook events as the source of truth.
+
+Webhook processing must be idempotent.
+
+Store prices, limits and features in the database.
+
+Create one centralized service for plan access and one centralized service for usage tracking.
+
+Do not redesign unrelated parts of RecruitCandidates.
+
+Do not change landing-page copy outside the pricing section.
+
+Keep the pricing page and billing experience clean, premium and easy to understand.

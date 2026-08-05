@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getCompanyForAdmin } from "@/lib/services/platform-admin";
-import { listPlans } from "@/lib/services/billing";
+import { listPlans } from "@/lib/services/plan-access";
 import { Card } from "@/components/ui/card";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from "@/components/ui/table";
@@ -40,12 +40,10 @@ export default async function PlatformAdminCompanyPage({ params }: PageProps<"/p
         <Card className="p-5">
           <p className="mb-2 text-sm font-semibold text-foreground">Usage</p>
           <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-            <p className="text-foreground-muted">Jobs: <span className="text-foreground">{usage.active_jobs}/{plan.limits.active_jobs}</span></p>
+            <p className="text-foreground-muted">Active jobs: <span className="text-foreground">{jobs.filter((j) => j.status === "published").length}/{plan.limits.active_jobs}</span></p>
             <p className="text-foreground-muted">Applications: <span className="text-foreground">{usage.applications}/{plan.limits.applications}</span></p>
-            <p className="text-foreground-muted">AI screenings: <span className="text-foreground">{usage.ai_screenings}/{plan.limits.ai_screenings}</span></p>
-            <p className="text-foreground-muted">Assessments: <span className="text-foreground">{usage.assessment_invitations}/{plan.limits.assessment_invitations}</span></p>
-            <p className="text-foreground-muted">Video interviews: <span className="text-foreground">{usage.video_interview_candidates}/{plan.limits.video_interview_candidates}</span></p>
-            <p className="text-foreground-muted">Team members: <span className="text-foreground">{usage.team_members}/{plan.limits.team_members}</span></p>
+            <p className="text-foreground-muted">Team members: <span className="text-foreground">{members.filter((m) => m.status === "active").length}/{plan.limits.team_members}</span></p>
+            <p className="text-foreground-muted">Live AI credits: <span className="text-foreground">{usage.live_ai_interview_credits}</span></p>
           </div>
         </Card>
       )}

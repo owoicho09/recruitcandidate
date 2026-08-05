@@ -46,16 +46,15 @@ export interface CompanyMember {
 export interface PlanLimits {
   active_jobs: number;
   applications: number;
-  ai_screenings: number;
-  assessment_invitations: number;
-  video_interview_candidates: number;
   team_members: number;
 }
+
+export type PlanSlug = "starter" | "growth" | "scale" | "enterprise";
 
 export interface Plan {
   id: string;
   name: string;
-  slug: "starter" | "growth" | "pro" | "enterprise";
+  slug: PlanSlug;
   currency: string;
   amount: number;
   interval: "monthly" | "annual";
@@ -63,6 +62,39 @@ export interface Plan {
   limits: PlanLimits;
   features: string[];
   active: boolean;
+  created_at: string;
+}
+
+export type AddonKind = "active_jobs" | "applications" | "team_members" | "live_ai_interviews";
+export type AddonBillingType = "recurring" | "one_time";
+
+export interface AddonProduct {
+  id: string;
+  sku: string;
+  name: string;
+  kind: AddonKind;
+  billing_type: AddonBillingType;
+  quantity: number;
+  amount: number;
+  currency: string;
+  min_plan_slug: PlanSlug | null;
+  active: boolean;
+  created_at: string;
+}
+
+export type CompanyAddonStatus = "active" | "canceled" | "expired";
+
+export interface CompanyAddon {
+  id: string;
+  company_id: string;
+  addon_product_id: string;
+  sku: string;
+  quantity: number;
+  billing_type: AddonBillingType;
+  status: CompanyAddonStatus;
+  period_start: string;
+  period_end: string | null;
+  paystack_reference: string | null;
   created_at: string;
 }
 
@@ -83,6 +115,7 @@ export interface Subscription {
   paystack_customer_code: string | null;
   paystack_subscription_code: string | null;
   paystack_email_token: string | null;
+  paystack_authorization_code: string | null;
   status: SubscriptionStatus;
   period_start: string;
   period_end: string;
@@ -127,12 +160,8 @@ export interface UsagePeriod {
   subscription_id: string;
   period_start: string;
   period_end: string;
-  active_jobs: number;
   applications: number;
-  ai_screenings: number;
-  assessment_invitations: number;
-  video_interview_candidates: number;
-  team_members: number;
+  live_ai_interview_credits: number;
   storage_bytes: number;
 }
 
@@ -452,7 +481,10 @@ export interface EmailLog {
     | "subscription_canceled"
     | "card_expiring"
     | "password_reset"
-    | "email_verification";
+    | "email_verification"
+    | "welcome"
+    | "admin_new_signup_notification"
+    | "support_request";
   recipient: string;
   subject: string;
   status: EmailStatus;

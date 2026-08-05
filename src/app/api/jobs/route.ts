@@ -2,9 +2,18 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/require-session";
 import { jobSchema } from "@/lib/validation/job";
 import { createJob } from "@/lib/services/jobs";
+import { hasActiveSubscription } from "@/lib/services/plan-access";
 
 export async function POST(request: Request) {
   const session = await requireSession("recruiter");
+
+  // Accounts can explore the dashboard freely, but job creation is the one
+  // action gated on actually having a plan — everything else (usage limits)
+  // only matters once you're past this point.
+  if (!(await hasActiveSubscription(session.companyId))) {
+    return NextResponse.json({ error: "Choose a plan to start creating jobs.", requiresPlan: true }, { status: 402 });
+  }
+
   const body = await request.json().catch(() => null);
   const parsed = jobSchema.safeParse(body);
   if (!parsed.success) {

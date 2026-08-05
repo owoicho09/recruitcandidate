@@ -39,7 +39,7 @@ export function VideoInterviewBuilder({ jobId, videoInterview }: { jobId: string
         <CardContent className="flex flex-col gap-4">
           <Field label="Title" htmlFor="title" required error={errors.title?.message}><Input id="title" {...register("title")} /></Field>
           <Field label="Introduction / instructions" htmlFor="instructions" required error={errors.instructions?.message}><Textarea id="instructions" rows={3} {...register("instructions")} /></Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Deadline (days)" htmlFor="deadline_days"><Input id="deadline_days" type="number" {...register("deadline_days")} /></Field>
             <Field label="Status" htmlFor="status">
               <Controller name="status" control={control} render={({ field }) => (

@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
+import { Suspense } from "react";
 import { requireSession } from "@/lib/auth/require-session";
 import { getCompany } from "@/lib/services/companies";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Topbar } from "@/components/dashboard/topbar";
 import { SubscriptionBanner } from "@/components/dashboard/subscription-banner";
-import { getSubscription } from "@/lib/services/billing";
+import { getSubscription } from "@/lib/services/plan-access";
+import { MelvinaWidget } from "@/components/dashboard/melvina-widget";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const session = await requireSession();
@@ -22,9 +24,12 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           companyName={company?.name ?? "Workspace"}
           companySlug={session.companySlug}
         />
-        {subscription && <SubscriptionBanner subscription={subscription} />}
+        <SubscriptionBanner subscription={subscription} />
         <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">{children}</main>
       </div>
+      <Suspense fallback={null}>
+        <MelvinaWidget firstName={session.fullName.split(" ")[0] || session.fullName} />
+      </Suspense>
     </div>
   );
 }

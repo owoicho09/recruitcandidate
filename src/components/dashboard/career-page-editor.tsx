@@ -121,7 +121,7 @@ export function CareerPageEditor({ company, jobs }: { company: Company; jobs: Jo
             <Field label="Company description" htmlFor="description">
               <Textarea id="description" rows={3} {...register("description")} />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Brand accent color" htmlFor="brandColor">
                 <input id="brandColor" type="color" className="h-10 w-16 rounded-lg border border-border-strong bg-surface p-1" {...register("brandColor")} />
               </Field>
@@ -144,13 +144,13 @@ export function CareerPageEditor({ company, jobs }: { company: Company; jobs: Jo
         <Card>
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm font-semibold text-foreground">Location & links</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="City" htmlFor="city"><Input id="city" {...register("city")} /></Field>
               <Field label="Country" htmlFor="country"><Input id="country" {...register("country")} /></Field>
             </div>
             <Field label="Website" htmlFor="website"><Input id="website" {...register("website")} /></Field>
             <Field label="Contact email" htmlFor="contactEmail"><Input id="contactEmail" {...register("contactEmail")} /></Field>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Field label="LinkedIn" htmlFor="linkedin"><Input id="linkedin" {...register("linkedin")} /></Field>
               <Field label="Twitter / X" htmlFor="twitter"><Input id="twitter" {...register("twitter")} /></Field>
               <Field label="Facebook" htmlFor="facebook"><Input id="facebook" {...register("facebook")} /></Field>

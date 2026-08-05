@@ -3,7 +3,7 @@ import type {
   Company, CompanyMember, Plan, Subscription, UsagePeriod, Job, Candidate, Application,
   AiScreeningResult, Assessment, AssessmentAttempt, VideoInterview, VideoInterviewAttempt,
   VideoResponse, PipelineEvent, Note, RejectionRecord, EmailTemplate, EmailLog, TeamInvitation, AuditLog,
-  SubscriptionEvent, Payment,
+  SubscriptionEvent, Payment, AddonProduct, CompanyAddon,
 } from "@/types/database";
 
 export interface MockUser {
@@ -49,6 +49,8 @@ export interface MockStore {
   auditLogs: AuditLog[];
   subscriptionEvents: SubscriptionEvent[];
   payments: Payment[];
+  addonProducts: AddonProduct[];
+  companyAddons: CompanyAddon[];
 }
 
 function seed(): MockStore {
@@ -102,6 +104,8 @@ function seed(): MockStore {
         metadata: {},
       },
     ],
+    addonProducts: [...fixtures.addonProducts],
+    companyAddons: [...fixtures.companyAddons],
   };
 }
 

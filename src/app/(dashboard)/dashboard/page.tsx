@@ -7,7 +7,8 @@ import {
 import { requireSession } from "@/lib/auth/require-session";
 import { listJobs } from "@/lib/services/jobs";
 import { listApplicantsForCompany } from "@/lib/services/applications";
-import { getPlanForCompany, getCurrentUsage, getSubscription } from "@/lib/services/billing";
+import { getPlanForCompany, getSubscription } from "@/lib/services/plan-access";
+import { getCurrentUsage } from "@/lib/services/usage-tracking";
 import { Card } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";

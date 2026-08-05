@@ -28,7 +28,7 @@ export function SettingsForm({ company, readOnly }: { company: Company; readOnly
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <Field label="Company name" htmlFor="name"><Input id="name" disabled={readOnly} {...register("name")} /></Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Industry" htmlFor="industry"><Input id="industry" disabled={readOnly} {...register("industry")} /></Field>
             <Field label="Company size" htmlFor="size"><Input id="size" disabled={readOnly} {...register("size")} /></Field>
           </div>

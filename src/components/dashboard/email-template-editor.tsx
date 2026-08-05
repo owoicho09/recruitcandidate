@@ -62,7 +62,7 @@ export function EmailTemplateEditor({ template }: { template: EmailTemplate }) {
             <Textarea id="body" rows={6} {...register("body")} />
           </Field>
           <Field label="Signature" htmlFor="signature"><Input id="signature" {...register("signature")} /></Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Reply-to" htmlFor="replyTo" error={errors.replyTo?.message}><Input id="replyTo" {...register("replyTo")} /></Field>
             <Field label="Sender name" htmlFor="senderDisplayName"><Input id="senderDisplayName" {...register("senderDisplayName")} /></Field>
           </div>

@@ -79,9 +79,6 @@ export async function sendVideoInvite(companyId: string, applicationId: string):
 
     await supabase.from("applications").update({ stage: "video_interview", stage_updated_at: new Date().toISOString() }).eq("id", applicationId);
 
-    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
-    await createAdminSupabaseClient().rpc("increment_usage", { p_company_id: companyId, p_metric: "video_interview_candidates" });
-
     return { attempt: attempt as VideoInterviewAttempt, token };
   }
 
@@ -104,9 +101,6 @@ export async function sendVideoInvite(companyId: string, applicationId: string):
   mockStore.videoInterviewAttempts.push(attempt);
   application.stage = "video_interview";
   application.stage_updated_at = new Date().toISOString();
-
-  const usage = mockStore.usagePeriods.find((u) => u.company_id === companyId);
-  if (usage) usage.video_interview_candidates += 1;
 
   return { attempt, token };
 }

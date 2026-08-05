@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/require-session";
-import { setJobStatus, countActiveJobs } from "@/lib/services/jobs";
-import { checkUsage } from "@/lib/services/billing";
+import { setJobStatus } from "@/lib/services/jobs";
+import { checkUsage } from "@/lib/services/usage-tracking";
 
 const VALID = ["draft", "published", "paused", "closed", "archived"] as const;
 
@@ -14,8 +14,8 @@ export async function POST(request: Request, { params }: RouteContext<"/api/jobs
 
   if (status === "published") {
     const usage = await checkUsage(session.companyId, "active_jobs");
-    if (!usage.allowed && (await countActiveJobs(session.companyId)) >= usage.limit) {
-      return NextResponse.json({ error: `Your plan allows ${usage.limit} active jobs. Upgrade to publish more.` }, { status: 429 });
+    if (!usage.allowed) {
+      return NextResponse.json({ error: `Your plan allows ${usage.limit} active jobs. Upgrade or buy more jobs to publish more.` }, { status: 429 });
     }
   }
 

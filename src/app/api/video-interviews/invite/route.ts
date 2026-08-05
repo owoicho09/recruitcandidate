@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/require-session";
 import { sendVideoInvite, getVideoAttemptByToken } from "@/lib/services/video-interviews";
-import { checkUsage } from "@/lib/services/billing";
 import { sendEmail, getTemplate, renderTemplate } from "@/lib/email/resend";
 import { env } from "@/lib/env";
 
@@ -11,9 +10,8 @@ export async function POST(request: Request) {
   const applicationId = body.applicationId;
   if (typeof applicationId !== "string") return NextResponse.json({ error: "Missing applicationId" }, { status: 400 });
 
-  const usage = await checkUsage(session.companyId, "video_interview_candidates");
-  if (!usage.allowed) return NextResponse.json({ error: "Your plan's video interview limit has been reached." }, { status: 429 });
-
+  // Video interview invitations ride the same application allowance consumed
+  // at submission time — not metered separately (see assessments/invite for the same pattern).
   const result = await sendVideoInvite(session.companyId, applicationId);
   if (!result) return NextResponse.json({ error: "No video interview is configured for this role yet." }, { status: 404 });
 

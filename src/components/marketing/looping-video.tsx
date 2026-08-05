@@ -3,8 +3,12 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 
-const DEMO_VIDEO_SRC =
-  "https://ldfssyrwmcmqkrvbfoef.supabase.co/storage/v1/object/public/videos/161f77df-754f-428f-985c-01d846c36324/0.webm";
+// Self-hosted rather than hotlinked: the original source sat behind Cloudflare
+// Bot Management on someone else's Supabase project with no-cache headers —
+// it played in dev but got blocked once real traffic hit it from the
+// production domain. Served from /public here, it's a same-origin request
+// with no external dependency to break.
+const DEMO_VIDEO_SRC = "/videos/product-demo.webm";
 
 /**
  * Silent, looping, autoplaying decorative video used across the marketing

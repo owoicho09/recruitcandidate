@@ -44,7 +44,7 @@ export function SiteHeader() {
             Log in
           </Button>
           <Button href="/signup" size="sm">
-            Start hiring
+            Create your account
           </Button>
         </div>
 
@@ -74,7 +74,7 @@ export function SiteHeader() {
               Log in
             </Button>
             <Button href="/signup" size="sm">
-              Start hiring
+              Create your account
             </Button>
           </div>
         </div>

@@ -49,9 +49,6 @@ export async function inviteMember(companyId: string, invitedBy: string, email: 
 
     await sendEmail({ companyId, type: "team_invitation", to: email, subject, body, createdBy: invitedBy });
 
-    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
-    await createAdminSupabaseClient().rpc("increment_usage", { p_company_id: companyId, p_metric: "team_members" });
-
     return invitation as TeamInvitation;
   }
 
@@ -78,10 +75,18 @@ export async function inviteMember(companyId: string, invitedBy: string, email: 
 
   await sendEmail({ companyId, type: "team_invitation", to: email, subject, body, createdBy: invitedBy });
 
-  const usage = mockStore.usagePeriods.find((u) => u.company_id === companyId);
-  if (usage) usage.team_members += 1;
-
   return invitation;
+}
+
+/** Live count (active members only) — mirrors jobs.ts's countActiveJobs. Removing a member frees a seat immediately, so this is never a stored/incremented counter. */
+export async function countActiveTeamMembers(companyId: string): Promise<number> {
+  if (flags.hasSupabase) {
+    const { createServerSupabaseClient } = await import("@/lib/supabase/server");
+    const supabase = await createServerSupabaseClient();
+    const { count } = await supabase.from("company_members").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "active");
+    return count ?? 0;
+  }
+  return mockStore.companyMembers.filter((m) => m.company_id === companyId && m.status === "active").length;
 }
 
 export async function revokeInvitation(companyId: string, invitationId: string) {

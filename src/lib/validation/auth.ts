@@ -24,12 +24,7 @@ export const signupCompanySchema = z.object({
   timezone: z.string().min(1),
 });
 
-export const signupPlanSchema = z.object({
-  planId: z.string().min(1, "Select a plan"),
-  interval: z.enum(["monthly", "annual"]),
-});
-
-export const signupSchema = signupAccountSchema.extend(signupCompanySchema.shape).extend(signupPlanSchema.shape);
+export const signupSchema = signupAccountSchema.extend(signupCompanySchema.shape);
 export type SignupInput = z.infer<typeof signupSchema>;
 
 export const loginSchema = z.object({

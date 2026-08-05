@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/require-session";
 import { sendAssessmentInvite, getAttemptByToken } from "@/lib/services/assessments";
-import { checkUsage } from "@/lib/services/billing";
 import { sendEmail, getTemplate, renderTemplate } from "@/lib/email/resend";
 import { env } from "@/lib/env";
 
@@ -11,9 +10,9 @@ export async function POST(request: Request) {
   const applicationId = body.applicationId;
   if (typeof applicationId !== "string") return NextResponse.json({ error: "Missing applicationId" }, { status: 400 });
 
-  const usage = await checkUsage(session.companyId, "assessment_invitations");
-  if (!usage.allowed) return NextResponse.json({ error: "Your plan's assessment invitation limit has been reached." }, { status: 429 });
-
+  // Assessment invitations ride the same application allowance consumed at
+  // submission time — they aren't metered separately (spec: one allowance
+  // unit per application covers screening/assessment/video/pipeline).
   const result = await sendAssessmentInvite(session.companyId, applicationId);
   if (!result) return NextResponse.json({ error: "No assessment is configured for this role yet." }, { status: 404 });
 

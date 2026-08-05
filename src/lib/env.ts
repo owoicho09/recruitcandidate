@@ -50,6 +50,8 @@ const schema = z.object({
   ANTHROPIC_SCREENING_MODEL: z.string().default("claude-sonnet-5"),
   ANTHROPIC_INTERVIEW_MODEL: z.string().default("claude-sonnet-5"),
   ANTHROPIC_EMAIL_MODEL: z.string().default("claude-sonnet-5"),
+  // Cheapest tier — used for the high-volume Melvina support widget, not screening/analysis.
+  ANTHROPIC_CHAT_MODEL: z.string().default("claude-haiku-4-5-20251001"),
   ANTHROPIC_REQUEST_TIMEOUT_MS: z.coerce.number().default(60000),
   ANTHROPIC_MAX_RETRIES: z.coerce.number().default(2),
   AI_SCREENING_PROMPT_VERSION: z.string().default("v1"),
@@ -62,34 +64,16 @@ const schema = z.object({
   PAYSTACK_CALLBACK_URL: z.string().default("http://localhost:3000/dashboard/billing/callback"),
   PAYSTACK_WEBHOOK_URL: z.string().default("http://localhost:3000/api/webhooks/paystack"),
   PAYSTACK_CURRENCY: z.string().default("NGN"),
+  // Real Paystack Plan codes, created in the Paystack dashboard and synced into
+  // the `plans` table via `scripts/sync-plan-codes.mjs` — the DB row is what
+  // checkout actually reads, these env vars are just the operational input.
   PAYSTACK_STARTER_MONTHLY_PLAN_CODE: z.string().default(""),
   PAYSTACK_GROWTH_MONTHLY_PLAN_CODE: z.string().default(""),
-  PAYSTACK_PRO_MONTHLY_PLAN_CODE: z.string().default(""),
+  PAYSTACK_SCALE_MONTHLY_PLAN_CODE: z.string().default(""),
   PAYSTACK_STARTER_ANNUAL_PLAN_CODE: z.string().default(""),
   PAYSTACK_GROWTH_ANNUAL_PLAN_CODE: z.string().default(""),
-  PAYSTACK_PRO_ANNUAL_PLAN_CODE: z.string().default(""),
+  PAYSTACK_SCALE_ANNUAL_PLAN_CODE: z.string().default(""),
   PAYMENT_GRACE_PERIOD_DAYS: z.coerce.number().default(3),
-
-  STARTER_ACTIVE_JOBS_LIMIT: z.coerce.number().default(3),
-  STARTER_APPLICATIONS_LIMIT: z.coerce.number().default(200),
-  STARTER_AI_SCREENINGS_LIMIT: z.coerce.number().default(200),
-  STARTER_ASSESSMENT_INVITES_LIMIT: z.coerce.number().default(30),
-  STARTER_VIDEO_INTERVIEWS_LIMIT: z.coerce.number().default(20),
-  STARTER_TEAM_MEMBERS_LIMIT: z.coerce.number().default(2),
-
-  GROWTH_ACTIVE_JOBS_LIMIT: z.coerce.number().default(10),
-  GROWTH_APPLICATIONS_LIMIT: z.coerce.number().default(1000),
-  GROWTH_AI_SCREENINGS_LIMIT: z.coerce.number().default(1000),
-  GROWTH_ASSESSMENT_INVITES_LIMIT: z.coerce.number().default(200),
-  GROWTH_VIDEO_INTERVIEWS_LIMIT: z.coerce.number().default(100),
-  GROWTH_TEAM_MEMBERS_LIMIT: z.coerce.number().default(5),
-
-  PRO_ACTIVE_JOBS_LIMIT: z.coerce.number().default(30),
-  PRO_APPLICATIONS_LIMIT: z.coerce.number().default(5000),
-  PRO_AI_SCREENINGS_LIMIT: z.coerce.number().default(5000),
-  PRO_ASSESSMENT_INVITES_LIMIT: z.coerce.number().default(1000),
-  PRO_VIDEO_INTERVIEWS_LIMIT: z.coerce.number().default(500),
-  PRO_TEAM_MEMBERS_LIMIT: z.coerce.number().default(15),
 
   PLATFORM_ADMIN_EMAIL: z.string().default(""),
   PLATFORM_ADMIN_SESSION_SECRET: z.string().default("dev-platform-admin-secret-change-me"),
