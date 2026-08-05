@@ -1,9 +1,12 @@
+import { after } from "next/server";
 import { flags } from "@/lib/env";
 import { mockStore } from "@/lib/data/store";
 import { id, daysFromNow } from "@/lib/data/ids";
 import { generateToken, hashToken } from "@/lib/utils/token";
 import { runCvScreening } from "@/lib/ai/claude";
 import { recordApplicationSubmitted } from "@/lib/services/usage-tracking";
+import { extractCvText } from "@/lib/cv/extract-text";
+import { uploadPrivateFile } from "@/lib/storage/files";
 import { env } from "@/lib/env";
 import type { AiScreeningResult, Application, ApplicationStage, Candidate, Recommendation } from "@/types/database";
 
@@ -237,6 +240,8 @@ export interface PublicApplicationInput {
   portfolio_url?: string;
   cover_note?: string;
   cv_filename: string;
+  cv_buffer: Buffer;
+  cv_content_type: string;
   application_answers: Record<string, string>;
 }
 
@@ -265,6 +270,7 @@ export async function submitApplication(companySlug: string, jobId: string, inpu
     mockStore.candidates.push(candidate);
   }
 
+  const extracted = await extractCvText(input.cv_buffer, input.cv_filename);
   const trackingToken = generateToken();
   const application: Application = {
     id: id(),
@@ -273,8 +279,8 @@ export async function submitApplication(companySlug: string, jobId: string, inpu
     candidate_id: candidate.id,
     cv_path: `demo/cvs/${id()}.pdf`,
     cv_filename: input.cv_filename,
-    cv_text: null,
-    cv_parse_status: "pending",
+    cv_text: extracted.text,
+    cv_parse_status: extracted.status,
     cover_note: input.cover_note ?? null,
     application_answers: input.application_answers,
     stage: "applied",
@@ -293,7 +299,10 @@ export async function submitApplication(companySlug: string, jobId: string, inpu
   if (usage) usage.applications += 1;
 
   // Background-style processing — see Part R: candidate submission never blocks on this.
-  void processApplicationScreening(company.id, application.id);
+  // Wrapped in after() rather than a bare fire-and-forget call: on serverless
+  // hosts (Vercel) the function can be frozen the instant the response is
+  // sent, which would silently kill an unawaited promise mid-flight.
+  after(() => processApplicationScreening(company.id, application.id));
 
   return { application, trackingToken };
 }
@@ -329,6 +338,14 @@ async function submitApplicationLive(companySlug: string, jobId: string, input: 
     candidate = created;
   }
 
+  const extracted = await extractCvText(input.cv_buffer, input.cv_filename);
+  const cvPath = `${company.id}/${candidate!.id}/${Date.now()}-${sanitizeFilename(input.cv_filename)}`;
+  try {
+    await uploadPrivateFile(env.SUPABASE_CV_BUCKET, cvPath, input.cv_buffer, input.cv_content_type);
+  } catch (err) {
+    console.error("CV upload failed:", err);
+  }
+
   const trackingToken = generateToken();
   const { data: application, error: applicationError } = await admin
     .from("applications")
@@ -336,9 +353,10 @@ async function submitApplicationLive(companySlug: string, jobId: string, input: 
       company_id: company.id,
       job_id: job.id,
       candidate_id: candidate!.id,
-      cv_path: `${company.id}/${input.cv_filename}`,
+      cv_path: cvPath,
       cv_filename: input.cv_filename,
-      cv_parse_status: "pending",
+      cv_text: extracted.text,
+      cv_parse_status: extracted.status,
       cover_note: input.cover_note ?? null,
       application_answers: input.application_answers,
       stage: "applied",
@@ -351,9 +369,35 @@ async function submitApplicationLive(companySlug: string, jobId: string, input: 
   await recordPipelineEvent(company.id, application.id, null, "applied", null, "system");
   await recordApplicationSubmitted(company.id);
 
-  void processApplicationScreening(company.id, application.id);
+  after(() => processApplicationScreening(company.id, application.id));
 
   return { application: application as Application, trackingToken };
+}
+
+/** CVs that couldn't be parsed (unsupported format, corrupt file) skip the AI call entirely — there's no text to screen against — and are flagged for a human to open the original file. */
+function unreadableCvResult(applicationId: string): Omit<AiScreeningResult, "id"> {
+  return {
+    application_id: applicationId,
+    overall_score: 0,
+    skills_match: 0,
+    experience_match: 0,
+    education_match: null,
+    transferable_skills: [],
+    matched_requirements: [],
+    missing_minimum_requirements: [],
+    missing_preferred_requirements: [],
+    strengths: [],
+    concerns: [],
+    achievements: [],
+    uncertainty_notes: ["The uploaded CV could not be read automatically — review the original file."],
+    explanation: "This CV couldn't be parsed automatically (unsupported format or corrupt file). Please open the original file and review manually.",
+    recommendation: "manual_review",
+    review_state: "manual_review_required",
+    manual_override: null,
+    model_version: "n/a",
+    prompt_version: env.AI_SCREENING_PROMPT_VERSION,
+    created_at: new Date().toISOString(),
+  };
 }
 
 async function processApplicationScreening(companyId: string, applicationId: string) {
@@ -362,14 +406,18 @@ async function processApplicationScreening(companyId: string, applicationId: str
     const admin = createAdminSupabaseClient();
     const { data: application } = await admin.from("applications").select("*").eq("id", applicationId).maybeSingle();
     if (!application) return;
-
-    await admin.from("applications").update({ cv_parse_status: "parsed", cv_text: "Extracted CV text (live mode placeholder — wire a real CV parser here)." }).eq("id", applicationId);
     const { data: job } = await admin.from("jobs").select("*").eq("id", application.job_id).single();
 
-    const result = await runCvScreening({ job, application: { ...application, cv_text: "Extracted CV text (live mode placeholder — wire a real CV parser here)." } });
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- runCvScreening returns a mock-store-shaped id we discard in favor of the DB-generated one.
-    const { id: _mockId, ...resultForInsert } = result;
-    await admin.from("ai_screening_results").insert({ ...resultForInsert, application_id: applicationId });
+    let result: Omit<AiScreeningResult, "id">;
+    if (application.cv_text) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- runCvScreening returns a mock-store-shaped id we discard in favor of the DB-generated one.
+      const { id: _mockId, ...rest } = await runCvScreening({ job, application });
+      result = rest;
+    } else {
+      result = unreadableCvResult(applicationId);
+    }
+
+    await admin.from("ai_screening_results").insert({ ...result, application_id: applicationId });
     await admin.from("applications").update({ stage: "cv_screened", stage_updated_at: new Date().toISOString(), recommendation: result.recommendation }).eq("id", applicationId);
     await recordPipelineEvent(companyId, applicationId, "applied", "cv_screened", null, "ai");
     return;
@@ -377,16 +425,18 @@ async function processApplicationScreening(companyId: string, applicationId: str
 
   const application = mockStore.applications.find((a) => a.id === applicationId);
   if (!application) return;
-  application.cv_parse_status = "parsed";
-  application.cv_text = "Extracted CV text (demo mode placeholder).";
 
   const job = mockStore.jobs.find((j) => j.id === application.job_id)!;
-  const result = await runCvScreening({ job, application });
+  const result = application.cv_text ? await runCvScreening({ job, application }) : { ...unreadableCvResult(applicationId), id: id() };
   mockStore.aiScreeningResults.push(result);
   application.stage = "cv_screened";
   application.stage_updated_at = new Date().toISOString();
   application.recommendation = result.recommendation;
   await recordPipelineEvent(companyId, applicationId, "applied", "cv_screened", null, "ai");
+}
+
+function sanitizeFilename(filename: string): string {
+  return filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-100);
 }
 
 export async function getApplicationByTrackingToken(token: string) {

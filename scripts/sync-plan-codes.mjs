@@ -3,9 +3,9 @@
 // the operational input. Safe to rerun any time a code changes.
 import { Client } from "pg";
 
-const connectionString = process.env.SUPABASE_DB_URL;
+const connectionString = process.env.SUPABASE_DATABASE_URL;
 if (!connectionString) {
-  console.error("Set SUPABASE_DB_URL first.");
+  console.error("Set SUPABASE_DATABASE_URL first.");
   process.exit(1);
 }
 

@@ -89,7 +89,7 @@ export default async function HomePage() {
           </div>
 
           <Card className="w-full max-w-3xl overflow-hidden p-0">
-            <video controls preload="metadata" playsInline className="aspect-video w-full bg-foreground">
+            <video controls autoPlay muted loop playsInline preload="auto" className="aspect-video w-full bg-foreground">
               <source src="/videos/product-demo.mp4" type="video/mp4" />
               <source src="/videos/product-demo.webm" type="video/webm" />
             </video>

@@ -5,8 +5,12 @@ import { generateToken, hashToken } from "@/lib/utils/token";
 import { daysFromNow } from "@/lib/data/ids";
 import { sendEmail } from "@/lib/email/resend";
 import { env, flags } from "@/lib/env";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
+  const allowed = await checkRateLimit(`forgot-password:${getClientIp(request)}`, 5, 60 * 60);
+  if (!allowed) return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
+
   const body = await request.json().catch(() => null);
   const parsed = forgotPasswordSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Enter a valid email." }, { status: 400 });

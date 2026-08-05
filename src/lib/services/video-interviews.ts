@@ -1,8 +1,9 @@
-import { flags } from "@/lib/env";
+import { flags, env } from "@/lib/env";
 import { mockStore } from "@/lib/data/store";
 import { id, daysFromNow } from "@/lib/data/ids";
 import { hashToken, generateToken } from "@/lib/utils/token";
 import { analyzeVideoResponse } from "@/lib/ai/claude";
+import { uploadPrivateFile } from "@/lib/storage/files";
 import type { VideoInterview, VideoInterviewAttempt, VideoQuestion } from "@/types/database";
 
 export async function getVideoInterviewForJob(companyId: string, jobId: string): Promise<VideoInterview | null> {
@@ -166,8 +167,15 @@ export async function startVideoAttempt(token: string) {
   return attempt;
 }
 
-/** Called once per recorded answer — simulates the direct-to-storage upload + async transcription/analysis pipeline. */
-export async function submitVideoResponse(token: string, questionId: string, durationSeconds: number) {
+/**
+ * Called once per recorded answer. In live mode this uploads the candidate's
+ * actual recording to private storage; automated transcription/AI scoring
+ * needs a speech-to-text provider that isn't configured yet (there's no
+ * audio-capable model wired in), so those fields stay null/pending rather
+ * than faking a transcript — the response is still fully watchable and
+ * scorable by the employer via the existing manual-score flow.
+ */
+export async function submitVideoResponse(token: string, questionId: string, durationSeconds: number, videoBuffer: Buffer | null) {
   const tokenHash = hashToken(token);
 
   if (flags.hasSupabase) {
@@ -175,20 +183,28 @@ export async function submitVideoResponse(token: string, questionId: string, dur
     const admin = createAdminSupabaseClient();
     const { data: attempt } = await admin.from("video_interview_attempts").select("*").eq("token_hash", tokenHash).maybeSingle();
     if (!attempt) return null;
-    const { data: question } = await admin.from("video_questions").select("*").eq("id", questionId).single();
+    const { data: application } = await admin.from("applications").select("company_id").eq("id", attempt.application_id).single();
 
-    const analysis = await analyzeVideoResponse(question as VideoQuestion, `Transcribed response to: "${question.prompt}" (demo transcript).`);
+    const storagePath = `${application!.company_id}/${attempt.id}/${questionId}.webm`;
+    if (videoBuffer) {
+      try {
+        await uploadPrivateFile(env.SUPABASE_VIDEO_BUCKET, storagePath, videoBuffer, "video/webm");
+      } catch (err) {
+        console.error("Video response upload failed:", err);
+      }
+    }
+
     const { data: response, error } = await admin
       .from("video_responses")
       .insert({
         attempt_id: attempt.id,
         question_id: questionId,
-        storage_path: `${attempt.id}/${questionId}.webm`,
+        storage_path: storagePath,
         duration_seconds: durationSeconds,
-        transcript: analysis.transcript,
-        transcript_status: "complete",
-        ai_score: analysis.ai_score,
-        ai_analysis: analysis.ai_analysis,
+        transcript: null,
+        transcript_status: "pending",
+        ai_score: null,
+        ai_analysis: null,
       })
       .select("*")
       .single();

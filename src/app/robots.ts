@@ -1,0 +1,15 @@
+import type { MetadataRoute } from "next";
+import { env } from "@/lib/env";
+
+export default function robots(): MetadataRoute.Robots {
+  return {
+    rules: [
+      {
+        userAgent: "*",
+        allow: "/",
+        disallow: ["/dashboard", "/platform-admin", "/api", "/application/track", "/assessment", "/video-interview"],
+      },
+    ],
+    sitemap: `${env.NEXT_PUBLIC_APP_URL}/sitemap.xml`,
+  };
+}

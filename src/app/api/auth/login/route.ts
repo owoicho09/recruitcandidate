@@ -3,8 +3,12 @@ import { loginSchema } from "@/lib/validation/auth";
 import { mockStore } from "@/lib/data/store";
 import { setDemoSession } from "@/lib/auth/session";
 import { DEMO_MODE } from "@/lib/env";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
+  const allowed = await checkRateLimit(`login:${getClientIp(request)}`, 20, 15 * 60);
+  if (!allowed) return NextResponse.json({ error: "Too many attempts. Please try again in a few minutes." }, { status: 429 });
+
   const body = await request.json().catch(() => null);
   const parsed = loginSchema.safeParse(body);
   if (!parsed.success) {

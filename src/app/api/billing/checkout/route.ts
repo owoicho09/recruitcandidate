@@ -21,6 +21,7 @@ export async function POST(request: Request) {
   const { authorizationUrl } = await initializeTransaction({
     email: session.email,
     planCode: plan.paystack_plan_code,
+    amountNaira: plan.amount,
     reference,
     callbackUrl: env.PAYSTACK_CALLBACK_URL,
     metadata: { company_id: session.companyId, user_id: session.userId, plan_id: plan.id, purpose: "subscription" },

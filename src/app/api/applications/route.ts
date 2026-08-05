@@ -6,10 +6,14 @@ import { getCompanyBySlug } from "@/lib/services/companies";
 import { getJob } from "@/lib/services/jobs";
 import { sendEmail, getTemplate, renderTemplate } from "@/lib/email/resend";
 import { env } from "@/lib/env";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const MAX_CV_BYTES = env.MAX_CV_FILE_MB * 1024 * 1024;
 
 export async function POST(request: Request) {
+  const allowed = await checkRateLimit(`applications:${getClientIp(request)}`, 15, 60 * 60);
+  if (!allowed) return NextResponse.json({ error: "Too many applications submitted. Please try again later." }, { status: 429 });
+
   const form = await request.formData().catch(() => null);
   if (!form) return NextResponse.json({ error: "Invalid submission" }, { status: 400 });
 
@@ -55,6 +59,7 @@ export async function POST(request: Request) {
   }
 
   const input = parsed.data;
+  const cvBuffer = Buffer.from(await cv.arrayBuffer());
   const result = await submitApplication(companySlug, jobId, {
     first_name: input.firstName,
     last_name: input.lastName,
@@ -65,6 +70,8 @@ export async function POST(request: Request) {
     portfolio_url: input.portfolioUrl || undefined,
     cover_note: input.coverNote || undefined,
     cv_filename: cv.name,
+    cv_buffer: cvBuffer,
+    cv_content_type: cv.type || "application/octet-stream",
     application_answers: input.answers,
   });
 

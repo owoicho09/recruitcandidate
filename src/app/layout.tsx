@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { ToastProvider } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { publicEnv } from "@/lib/env-public";
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <TooltipProvider delayDuration={200}>
           <ToastProvider>{children}</ToastProvider>
         </TooltipProvider>
+        <Analytics />
       </body>
     </html>
   );

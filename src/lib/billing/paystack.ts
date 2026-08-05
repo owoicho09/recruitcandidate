@@ -8,10 +8,10 @@ export interface InitializeTransactionInput {
   reference: string;
   callbackUrl: string;
   metadata: PaystackMetadata;
-  /** Present for subscription checkout — Paystack charges the plan's own configured amount. */
+  /** Present for subscription checkout — Paystack charges the plan's own configured amount, but the initialize call still requires `amount` to match it or the API rejects the request. */
   planCode?: string;
-  /** Required when planCode is omitted (one-time add-on/credit purchases) — Naira, converted to kobo at the API boundary. */
-  amountNaira?: number;
+  /** Naira, converted to kobo at the API boundary. Always required — Paystack's initialize endpoint rejects requests with no `amount`, even when `plan` is set. */
+  amountNaira: number;
 }
 
 export interface InitializeTransactionResult {
@@ -43,7 +43,8 @@ export async function initializeTransaction(input: InitializeTransactionInput): 
       reference: input.reference,
       callback_url: input.callbackUrl,
       metadata: input.metadata,
-      ...(input.planCode ? { plan: input.planCode } : { amount: Math.round((input.amountNaira ?? 0) * 100) }),
+      amount: Math.round(input.amountNaira * 100),
+      ...(input.planCode ? { plan: input.planCode } : {}),
     }),
   });
   const json = await response.json();

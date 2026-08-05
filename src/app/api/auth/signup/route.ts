@@ -6,9 +6,13 @@ import { setDemoSession } from "@/lib/auth/session";
 import { sendEmail } from "@/lib/email/resend";
 import { env, DEMO_MODE } from "@/lib/env";
 import { templateDefaults } from "@/lib/data/fixtures";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import type { Company, CompanyMember } from "@/types/database";
 
 export async function POST(request: Request) {
+  const allowed = await checkRateLimit(`signup:${getClientIp(request)}`, 5, 60 * 60);
+  if (!allowed) return NextResponse.json({ error: "Too many signup attempts. Please try again later." }, { status: 429 });
+
   const body = await request.json().catch(() => null);
   const parsed = signupSchema.safeParse(body);
   if (!parsed.success) {

@@ -36,6 +36,7 @@ export function VideoInterviewRunner({
   const streamRef = React.useRef<MediaStream | null>(null);
   const recorderRef = React.useRef<MediaRecorder | null>(null);
   const chunksRef = React.useRef<Blob[]>([]);
+  const lastBlobRef = React.useRef<Blob | null>(null);
 
   const question = interview.questions[questionIndex];
 
@@ -79,6 +80,7 @@ export function VideoInterviewRunner({
     recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
     recorder.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: "video/webm" });
+      lastBlobRef.current = blob;
       setLastBlobUrl(URL.createObjectURL(blob));
     };
     recorder.start();
@@ -106,21 +108,23 @@ export function VideoInterviewRunner({
     if (retriesUsed >= question.max_retries) return;
     setRetriesUsed((r) => r + 1);
     setLastBlobUrl(null);
+    lastBlobRef.current = null;
     beginQuestion();
   }
 
   async function confirmAndContinue() {
     setPhase("submitting");
     const durationUsed = question.response_seconds - recordSeconds;
-    await fetch(`/api/video-interviews/${token}/respond`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ questionId: question.id, durationSeconds: durationUsed || question.response_seconds }),
-    });
+    const form = new FormData();
+    form.set("questionId", question.id);
+    form.set("durationSeconds", String(durationUsed || question.response_seconds));
+    if (lastBlobRef.current) form.set("video", lastBlobRef.current, `${question.id}.webm`);
+    await fetch(`/api/video-interviews/${token}/respond`, { method: "POST", body: form });
 
     if (questionIndex < interview.questions.length - 1) {
       setQuestionIndex((i) => i + 1);
       setLastBlobUrl(null);
+      lastBlobRef.current = null;
       setPhase("instructions");
     } else {
       await fetch(`/api/video-interviews/${token}/complete`, { method: "POST" });

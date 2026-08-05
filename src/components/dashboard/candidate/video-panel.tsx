@@ -2,12 +2,13 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { PlayCircle } from "lucide-react";
+import { PlayCircle, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { StatusChip } from "@/components/ui/status-chip";
 import { ScoreRing } from "@/components/ui/score-ring";
 import { Textarea } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
+import { publicEnv } from "@/lib/env-public";
 import type { VideoInterview, VideoInterviewAttempt, VideoResponse } from "@/types/database";
 
 export function VideoPanel({ videoInterview, attempt, responses }: { videoInterview: VideoInterview | null; attempt: VideoInterviewAttempt | null; responses: VideoResponse[] }) {
@@ -47,6 +48,8 @@ function VideoResponseCard({ prompt, response }: { prompt: string; response: Vid
   const toast = useToast();
   const [notes, setNotes] = React.useState("");
   const [saving, setSaving] = React.useState(false);
+  const [videoUrl, setVideoUrl] = React.useState<string | null>(null);
+  const [loadingVideo, setLoadingVideo] = React.useState(false);
 
   async function saveScore(score: number) {
     if (!response) return;
@@ -57,6 +60,21 @@ function VideoResponseCard({ prompt, response }: { prompt: string; response: Vid
     router.refresh();
   }
 
+  async function loadVideo() {
+    if (!response) return;
+    setLoadingVideo(true);
+    try {
+      const res = await fetch(`/api/video-interviews/responses/${response.id}/video-url`);
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error ?? "Couldn't load this recording");
+      setVideoUrl(data.url);
+    } catch (err) {
+      toast.error("Couldn't load recording", err instanceof Error ? err.message : undefined);
+    } finally {
+      setLoadingVideo(false);
+    }
+  }
+
   return (
     <Card className="p-5">
       <p className="text-sm font-semibold text-foreground">{prompt}</p>
@@ -65,9 +83,17 @@ function VideoResponseCard({ prompt, response }: { prompt: string; response: Vid
       ) : (
         <>
           <div className="mt-3 flex flex-col gap-4 sm:flex-row">
-            <div className="flex aspect-video w-full max-w-xs shrink-0 items-center justify-center rounded-lg bg-foreground/90">
-              <PlayCircle className="size-8 text-white/80" />
-            </div>
+            {videoUrl ? (
+              <video src={videoUrl} controls className="aspect-video w-full max-w-xs shrink-0 rounded-lg bg-foreground/90" />
+            ) : (
+              <button
+                onClick={loadVideo}
+                disabled={loadingVideo || publicEnv.demoMode}
+                className="flex aspect-video w-full max-w-xs shrink-0 items-center justify-center rounded-lg bg-foreground/90 disabled:cursor-not-allowed"
+              >
+                {loadingVideo ? <Loader2 className="size-8 animate-spin text-white/80" /> : <PlayCircle className="size-8 text-white/80" />}
+              </button>
+            )}
             <div className="flex flex-1 flex-col gap-3">
               <div className="flex items-center gap-3">
                 <ScoreRing score={response.employer_score ?? response.ai_score} size={44} />
@@ -90,7 +116,9 @@ function VideoResponseCard({ prompt, response }: { prompt: string; response: Vid
           </div>
           <div className="mt-3 rounded-lg bg-surface-muted p-3">
             <p className="text-xs font-semibold text-foreground-muted">Transcript</p>
-            <p className="mt-1 text-sm text-foreground-muted">{response.transcript}</p>
+            <p className="mt-1 text-sm text-foreground-muted">
+              {response.transcript ?? "Automatic transcription isn't set up yet — watch the recording above and score it manually."}
+            </p>
           </div>
           <div className="mt-3">
             <p className="text-xs font-semibold text-foreground-muted">Employer notes</p>
