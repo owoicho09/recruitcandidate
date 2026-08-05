@@ -15,7 +15,6 @@ import {
   Building2,
   Layers,
   Inbox,
-  ShieldCheck,
 } from "lucide-react";
 import { Container, SectionHeading } from "@/components/marketing/container";
 import { Button } from "@/components/ui/button";
@@ -35,7 +34,7 @@ const benefits = [
   { icon: Briefcase, label: "Job publishing & applications", description: "Publish a role and start collecting applications in minutes." },
   { icon: Sparkles, label: "AI-assisted CV screening", description: "Every CV is scored against the role's real requirements, not keywords." },
   { icon: ClipboardList, label: "Assessments", description: "Send role-specific assessments and get auto-scored results." },
-  { icon: Video, label: "Prerecorded video interviews", description: "Candidates record answers on their own time, on a secure link." },
+  { icon: Video, label: "Video interviews", description: "Candidates complete interviews on their own time, on a secure link." },
   { icon: FileText, label: "Transcription & analysis", description: "Every response comes with a transcript and a plain-language summary." },
   { icon: ListChecks, label: "Qualified candidates by role", description: "See your strongest applicants for each role, side by side." },
   { icon: MessageSquareText, label: "Reviewed rejection feedback", description: "AI drafts a respectful explanation — your team approves it before it sends." },
@@ -52,7 +51,7 @@ const audiences = [
 
 export default async function HomePage() {
   const plans = (await listPlans()).filter((p) => p.interval === "monthly");
-  const displayPlans = plans.filter((p) => p.slug !== "enterprise");
+  const displayPlans = plans.filter((p) => p.slug !== "enterprise").sort((a, b) => a.amount - b.amount);
 
   return (
     <>
@@ -90,13 +89,10 @@ export default async function HomePage() {
           </div>
 
           <Card className="w-full max-w-3xl overflow-hidden p-0">
-            <video
-              controls
-              preload="metadata"
-              playsInline
-              className="aspect-video w-full bg-foreground"
-              src="/videos/product-demo.webm"
-            />
+            <video controls preload="metadata" playsInline className="aspect-video w-full bg-foreground">
+              <source src="/videos/product-demo.mp4" type="video/mp4" />
+              <source src="/videos/product-demo.webm" type="video/webm" />
+            </video>
           </Card>
 
           <Button href="/signup" size="lg">
@@ -122,24 +118,6 @@ export default async function HomePage() {
               </div>
             ))}
           </div>
-        </Container>
-      </section>
-
-      {/* Screening accuracy */}
-      <section className="border-y border-border bg-surface py-16 sm:py-20">
-        <Container className="flex max-w-2xl flex-col items-center gap-4 text-center">
-          <div className="flex size-10 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <ShieldCheck className="size-5" />
-          </div>
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            Screening that understands the role, not just the words on a CV
-          </h2>
-          <p className="text-base text-foreground-muted">
-            RecruitCandidates looks beyond exact keyword matches — it considers relevant experience,
-            transferable skills, and how closely a candidate&apos;s background fits what the role actually
-            requires. It supports your team&apos;s review with clear, explained scores. It never makes the
-            final hiring decision — that stays with you.
-          </p>
         </Container>
       </section>
 
@@ -197,9 +175,6 @@ export default async function HomePage() {
       {/* Final CTA */}
       <section className="py-16 sm:py-20">
         <Container className="flex flex-col items-center gap-4 text-center">
-          <h2 className="max-w-xl text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-            Spend your time reviewing the best candidates, not every application.
-          </h2>
           <p className="max-w-md text-base text-foreground-muted">
             Create your workspace, publish your first role, and start receiving applicants through your own
             recruitment page.

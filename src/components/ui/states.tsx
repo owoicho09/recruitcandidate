@@ -75,6 +75,10 @@ export function PermissionDeniedState(props: Omit<StatePanelProps, "icon" | "tit
   return <StatePanel icon={Lock} title="You don't have access to this" {...props} />;
 }
 
+export function UnpublishedState(props: Omit<StatePanelProps, "icon" | "title">) {
+  return <StatePanel icon={Lock} title="This page isn't published yet" {...props} />;
+}
+
 export function LimitReachedState(props: Omit<StatePanelProps, "icon" | "title">) {
   return <StatePanel icon={Gauge} title="Plan limit reached" className="border-warning/30" {...props} />;
 }
