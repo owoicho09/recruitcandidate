@@ -10,8 +10,8 @@ import {
   recordPayment,
   getCompanyOwnerEmail,
 } from "@/lib/services/plan-access";
-import { setJobStatus } from "@/lib/services/jobs";
-import { trackLifecycleEvent } from "@/lib/services/lifecycle";
+import { setJobStatus, listJobs } from "@/lib/services/jobs";
+import { trackLifecycleEvent, recomputeLifecycleSegment } from "@/lib/services/lifecycle";
 import { sendEmail } from "@/lib/email/resend";
 import { ErrorState } from "@/components/ui/states";
 
@@ -84,7 +84,10 @@ export default async function BillingCallbackPage({ searchParams }: PageProps<"/
     }
 
     if (publishJobId) {
+      const wasFirstPublish = !(await listJobs(session.companyId)).some((j) => j.status === "published");
       await setJobStatus(session.companyId, publishJobId, "published");
+      if (wasFirstPublish) await trackLifecycleEvent(session.companyId, "first_job_published", session.userId);
+      else await recomputeLifecycleSegment(session.companyId);
       redirect(`/dashboard/jobs/${publishJobId}?justPaid=1`);
     }
   } else {

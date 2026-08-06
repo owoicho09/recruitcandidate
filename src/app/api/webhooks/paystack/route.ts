@@ -20,8 +20,8 @@ import {
   cancelCompanyAddon,
   recordPayment,
 } from "@/lib/services/plan-access";
-import { setJobStatus } from "@/lib/services/jobs";
-import { trackLifecycleEvent } from "@/lib/services/lifecycle";
+import { setJobStatus, listJobs } from "@/lib/services/jobs";
+import { trackLifecycleEvent, recomputeLifecycleSegment } from "@/lib/services/lifecycle";
 import { sendEmail } from "@/lib/email/resend";
 import { env } from "@/lib/env";
 
@@ -196,7 +196,10 @@ async function handleSubscriptionCharge(event: PaystackWebhookEvent, companyId: 
   // publish manually.
   const publishJobId = event.data.metadata?.publish_job_id;
   if (publishJobId) {
+    const wasFirstPublish = !(await listJobs(companyId)).some((j) => j.status === "published");
     await setJobStatus(companyId, publishJobId, "published");
+    if (wasFirstPublish) await trackLifecycleEvent(companyId, "first_job_published", null);
+    else await recomputeLifecycleSegment(companyId);
   }
 }
 
