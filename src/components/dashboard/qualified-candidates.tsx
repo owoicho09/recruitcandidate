@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GitCompare, X, ExternalLink } from "lucide-react";
+import { GitCompare, X, ExternalLink, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -99,7 +99,15 @@ export function QualifiedCandidates({ groups }: { groups: QualifiedGroup[] }) {
   );
 }
 
-function QualifiedCard({ row, selected, onToggleCompare, onRemove }: { row: QualifiedCandidateRow; selected: boolean; onToggleCompare: () => void; onRemove: () => void }) {
+function QualifiedCard({ row, selected, onToggleCompare, onRemove }: { row: QualifiedCandidateRow; selected: boolean; onToggleCompare: () => void; onRemove: () => Promise<void> }) {
+  const [removing, setRemoving] = React.useState(false);
+
+  async function handleRemove() {
+    setRemoving(true);
+    await onRemove();
+    setRemoving(false);
+  }
+
   return (
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex items-start justify-between">
@@ -118,8 +126,8 @@ function QualifiedCard({ row, selected, onToggleCompare, onRemove }: { row: Qual
         <Link href={`/dashboard/applicants/${row.application.id}`} className="flex items-center gap-1 text-sm text-accent hover:underline">
           <ExternalLink className="size-3.5" /> View profile
         </Link>
-        <button onClick={onRemove} className="flex items-center gap-1 text-xs text-foreground-muted hover:text-danger">
-          <X className="size-3.5" /> Remove
+        <button onClick={handleRemove} disabled={removing} className="flex items-center gap-1 text-xs text-foreground-muted hover:text-danger disabled:opacity-50">
+          {removing ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />} Remove
         </button>
       </div>
     </Card>

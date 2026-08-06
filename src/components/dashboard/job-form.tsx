@@ -25,7 +25,8 @@ const TAB_FOR_FIELD: Record<string, "details" | "requirements" | "screening"> = 
   title: "details", slug: "details", department: "details", location: "details",
   work_arrangement: "details", employment_type: "details", salary_min: "details", salary_max: "details",
   currency: "details", summary: "details", description: "details", openings_count: "details", closing_date: "details",
-  responsibilities: "requirements", required_skills: "requirements", preferred_skills: "requirements",
+  required_skills: "details",
+  responsibilities: "requirements", preferred_skills: "requirements",
   min_experience: "requirements", education_requirements: "requirements", other_requirements: "requirements",
   application_questions: "requirements", screening_weights: "screening",
 };
@@ -103,6 +104,85 @@ export function JobForm({ job }: { job?: Job }) {
   const tabHasError = (tab: "details" | "requirements" | "screening") =>
     Object.keys(errors).some((field) => TAB_FOR_FIELD[field] === tab);
 
+  const basicFields = (
+    <>
+      <Field label="Job title" htmlFor="title" required error={errors.title?.message}>
+        <Input id="title" {...register("title")} />
+      </Field>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Department" htmlFor="department" required error={errors.department?.message}>
+          <Input id="department" {...register("department")} />
+        </Field>
+        <Field label="Location" htmlFor="location" required error={errors.location?.message}>
+          <Input id="location" {...register("location")} />
+        </Field>
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Work arrangement" htmlFor="work_arrangement">
+          <Controller name="work_arrangement" control={control} render={({ field }) => (
+            <Select value={field.value} onValueChange={field.onChange}>
+              <SelectTrigger id="work_arrangement"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="onsite">Onsite</SelectItem>
+                <SelectItem value="hybrid">Hybrid</SelectItem>
+                <SelectItem value="remote">Remote</SelectItem>
+              </SelectContent>
+            </Select>
+          )} />
+        </Field>
+        <Field label="Employment type" htmlFor="employment_type">
+          <Controller name="employment_type" control={control} render={({ field }) => (
+            <Select value={field.value} onValueChange={field.onChange}>
+              <SelectTrigger id="employment_type"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="full_time">Full-time</SelectItem>
+                <SelectItem value="part_time">Part-time</SelectItem>
+                <SelectItem value="contract">Contract</SelectItem>
+                <SelectItem value="internship">Internship</SelectItem>
+                <SelectItem value="temporary">Temporary</SelectItem>
+              </SelectContent>
+            </Select>
+          )} />
+        </Field>
+      </div>
+      <Field label="Summary" htmlFor="summary" required error={errors.summary?.message} hint="One or two sentences shown on the career page list">
+        <Textarea id="summary" rows={2} {...register("summary")} />
+      </Field>
+      <Field label="Description" htmlFor="description" required error={errors.description?.message}>
+        <Textarea id="description" rows={5} {...register("description")} />
+      </Field>
+      <Field label="Required skills" htmlFor="required_skills" required error={errors.required_skills?.message}>
+        <Controller name="required_skills" control={control} render={({ field }) => (
+          <TagListInput value={field.value} onChange={field.onChange} placeholder="Add a required skill" />
+        )} />
+      </Field>
+    </>
+  );
+
+  // First-time creation: just the essentials. Salary, closing date,
+  // responsibilities, preferred skills, custom questions, and screening
+  // weights all take sensible defaults / stay empty until edited later —
+  // no need to make someone think about all of that before their first role
+  // even exists. Editing an existing job always shows everything.
+  if (!job) {
+    return (
+      <form onSubmit={handleSubmit(onSubmit, onError)} className="flex flex-col gap-6">
+        <Card>
+          <CardContent className="flex flex-col gap-4">
+            {basicFields}
+            <p className="text-xs text-foreground-muted">
+              You can add salary, a closing date, extra requirements, custom questions, and adjust screening weights any time after creating this role — open it and click Edit.
+            </p>
+          </CardContent>
+        </Card>
+        <div className="flex items-center gap-2">
+          <Button type="submit" loading={isSubmitting}>Create job</Button>
+          <Button type="button" variant="ghost" onClick={() => router.back()}>Cancel</Button>
+        </div>
+      </form>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit(onSubmit, onError)} className="flex flex-col gap-6">
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
@@ -115,48 +195,10 @@ export function JobForm({ job }: { job?: Job }) {
         <TabsContent value="details">
           <Card>
             <CardContent className="flex flex-col gap-4">
-              <Field label="Job title" htmlFor="title" required error={errors.title?.message}>
-                <Input id="title" {...register("title")} />
-              </Field>
+              {basicFields}
               <Field label="Slug" htmlFor="slug" required error={errors.slug?.message} hint={`/[company]/careers/${watch("slug") || "..."}`}>
                 <Input id="slug" {...register("slug")} onChange={(e) => { setSlugTouched(true); register("slug").onChange(e); }} />
               </Field>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="Department" htmlFor="department" required error={errors.department?.message}>
-                  <Input id="department" {...register("department")} />
-                </Field>
-                <Field label="Location" htmlFor="location" required error={errors.location?.message}>
-                  <Input id="location" {...register("location")} />
-                </Field>
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="Work arrangement" htmlFor="work_arrangement">
-                  <Controller name="work_arrangement" control={control} render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger id="work_arrangement"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="onsite">Onsite</SelectItem>
-                        <SelectItem value="hybrid">Hybrid</SelectItem>
-                        <SelectItem value="remote">Remote</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )} />
-                </Field>
-                <Field label="Employment type" htmlFor="employment_type">
-                  <Controller name="employment_type" control={control} render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger id="employment_type"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="full_time">Full-time</SelectItem>
-                        <SelectItem value="part_time">Part-time</SelectItem>
-                        <SelectItem value="contract">Contract</SelectItem>
-                        <SelectItem value="internship">Internship</SelectItem>
-                        <SelectItem value="temporary">Temporary</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )} />
-                </Field>
-              </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <Field label="Salary min" htmlFor="salary_min" hint="Optional">
                   <Input id="salary_min" type="number" {...register("salary_min")} />
@@ -168,12 +210,6 @@ export function JobForm({ job }: { job?: Job }) {
                   <Input id="currency" {...register("currency")} />
                 </Field>
               </div>
-              <Field label="Summary" htmlFor="summary" required error={errors.summary?.message} hint="One or two sentences shown on the career page list">
-                <Textarea id="summary" rows={2} {...register("summary")} />
-              </Field>
-              <Field label="Description" htmlFor="description" required error={errors.description?.message}>
-                <Textarea id="description" rows={5} {...register("description")} />
-              </Field>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Openings" htmlFor="openings_count" required error={errors.openings_count?.message}>
                   <Input id="openings_count" type="number" min={1} {...register("openings_count")} />
@@ -192,11 +228,6 @@ export function JobForm({ job }: { job?: Job }) {
               <Field label="Responsibilities" htmlFor="responsibilities">
                 <Controller name="responsibilities" control={control} render={({ field }) => (
                   <TagListInput value={field.value} onChange={field.onChange} placeholder="Add a responsibility" />
-                )} />
-              </Field>
-              <Field label="Required skills" htmlFor="required_skills" required error={errors.required_skills?.message}>
-                <Controller name="required_skills" control={control} render={({ field }) => (
-                  <TagListInput value={field.value} onChange={field.onChange} placeholder="Add a required skill" />
                 )} />
               </Field>
               <Field label="Preferred skills" htmlFor="preferred_skills">
@@ -270,7 +301,7 @@ export function JobForm({ job }: { job?: Job }) {
       </Tabs>
 
       <div className="flex items-center gap-2">
-        <Button type="submit" loading={isSubmitting}>{job ? "Save changes" : "Create job"}</Button>
+        <Button type="submit" loading={isSubmitting}>Save changes</Button>
         <Button type="button" variant="ghost" onClick={() => router.back()}>Cancel</Button>
       </div>
     </form>

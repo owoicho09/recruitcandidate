@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MoreHorizontal, Pencil, Eye, Rocket, Pause, Ban, Copy, Link2, Archive } from "lucide-react";
+import { MoreHorizontal, Pencil, Eye, Rocket, Pause, Ban, Copy, Link2, Archive, Loader2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/toast";
 import { publicEnv } from "@/lib/env-public";
@@ -12,11 +12,14 @@ import type { Job } from "@/types/database";
 export function JobActionsMenu({ job, companySlug }: { job: Job; companySlug: string }) {
   const router = useRouter();
   const toast = useToast();
+  const [busy, setBusy] = React.useState(false);
 
   async function setStatus(status: Job["status"]) {
+    setBusy(true);
     const res = await fetch(`/api/jobs/${job.id}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      setBusy(false);
       if (data.requiresPlan) {
         toast.error("Your job is ready to publish", "Choose a plan to start receiving applications.");
         router.push(`/dashboard/billing?publishJobId=${job.id}`);
@@ -27,10 +30,13 @@ export function JobActionsMenu({ job, companySlug }: { job: Job; companySlug: st
     }
     toast.success(`Job ${status}`);
     router.refresh();
+    setBusy(false);
   }
 
   async function duplicate() {
+    setBusy(true);
     const res = await fetch(`/api/jobs/${job.id}/duplicate`, { method: "POST" });
+    setBusy(false);
     if (res.ok) {
       toast.success("Job duplicated");
       router.refresh();
@@ -44,8 +50,8 @@ export function JobActionsMenu({ job, companySlug }: { job: Job; companySlug: st
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="rounded-md p-1.5 text-foreground-muted hover:bg-surface-muted focus:outline-none" onClick={(e) => e.stopPropagation()}>
-        <MoreHorizontal className="size-4" />
+      <DropdownMenuTrigger disabled={busy} className="rounded-md p-1.5 text-foreground-muted hover:bg-surface-muted focus:outline-none disabled:opacity-50" onClick={(e) => e.stopPropagation()}>
+        {busy ? <Loader2 className="size-4 animate-spin" /> : <MoreHorizontal className="size-4" />}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
         <DropdownMenuItem asChild>

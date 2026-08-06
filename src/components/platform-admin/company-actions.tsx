@@ -11,26 +11,27 @@ import type { Plan, Subscription } from "@/types/database";
 export function CompanyActions({ companyId, subscription, plans, currentPlanId }: { companyId: string; subscription: Subscription | null; plans: Plan[]; currentPlanId?: string }) {
   const router = useRouter();
   const toast = useToast();
-  const [busy, setBusy] = React.useState(false);
+  const [busyAction, setBusyAction] = React.useState<"suspend" | "restore" | "plan" | null>(null);
+  const busy = busyAction !== null;
 
   async function suspend() {
-    setBusy(true);
+    setBusyAction("suspend");
     const res = await fetch(`/api/platform-admin/companies/${companyId}/suspend`, { method: "POST" });
-    setBusy(false);
+    setBusyAction(null);
     if (res.ok) { toast.success("Company suspended"); router.refresh(); }
   }
 
   async function restore() {
-    setBusy(true);
+    setBusyAction("restore");
     const res = await fetch(`/api/platform-admin/companies/${companyId}/restore`, { method: "POST" });
-    setBusy(false);
+    setBusyAction(null);
     if (res.ok) { toast.success("Company restored"); router.refresh(); }
   }
 
   async function changePlan(planId: string) {
-    setBusy(true);
+    setBusyAction("plan");
     const res = await fetch(`/api/platform-admin/companies/${companyId}/plan`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId }) });
-    setBusy(false);
+    setBusyAction(null);
     if (res.ok) { toast.success("Plan updated"); router.refresh(); }
   }
 
@@ -43,9 +44,9 @@ export function CompanyActions({ companyId, subscription, plans, currentPlanId }
         </SelectContent>
       </Select>
       {subscription?.status === "canceled" ? (
-        <Button size="sm" variant="secondary" disabled={busy} onClick={restore}><RotateCcw className="size-4" /> Restore</Button>
+        <Button size="sm" variant="secondary" loading={busyAction === "restore"} disabled={busy} onClick={restore}><RotateCcw className="size-4" /> Restore</Button>
       ) : (
-        <Button size="sm" variant="danger" disabled={busy} onClick={suspend}><Ban className="size-4" /> Suspend</Button>
+        <Button size="sm" variant="danger" loading={busyAction === "suspend"} disabled={busy} onClick={suspend}><Ban className="size-4" /> Suspend</Button>
       )}
     </div>
   );
