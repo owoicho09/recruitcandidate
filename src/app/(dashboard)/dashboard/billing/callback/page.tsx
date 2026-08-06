@@ -3,6 +3,8 @@ import { CheckCircle2 } from "lucide-react";
 import { requireSession } from "@/lib/auth/require-session";
 import { verifyTransaction } from "@/lib/billing/paystack";
 import { activateSubscription, getSubscription, getPlan, getAddonProductBySku, fulfillAddonPurchase, recordPayment } from "@/lib/services/plan-access";
+import { setJobStatus } from "@/lib/services/jobs";
+import { trackLifecycleEvent } from "@/lib/services/lifecycle";
 import { flags } from "@/lib/env";
 import { ErrorState } from "@/components/ui/states";
 import { Button } from "@/components/ui/button";
@@ -31,6 +33,7 @@ export default async function BillingCallbackPage({ searchParams }: PageProps<"/
 
   if (!flags.hasPaystack) {
     const purpose = result.metadata.purpose ?? "subscription";
+    const publishJobId = typeof result.metadata.publish_job_id === "string" ? result.metadata.publish_job_id : null;
 
     if (purpose === "subscription") {
       const existing = await getSubscription(session.companyId);
@@ -49,6 +52,11 @@ export default async function BillingCallbackPage({ searchParams }: PageProps<"/
           paidAt: new Date().toISOString(),
           metadata: result.metadata,
         });
+        await trackLifecycleEvent(session.companyId, "subscription_activated", session.userId, { plan_id: planId });
+      }
+      if (publishJobId) {
+        await setJobStatus(session.companyId, publishJobId, "published");
+        redirect(`/dashboard/jobs/${publishJobId}?justPaid=1`);
       }
     } else {
       const sku = result.metadata.sku as string | undefined;
@@ -71,6 +79,11 @@ export default async function BillingCallbackPage({ searchParams }: PageProps<"/
     }
 
     redirect("/dashboard/billing?onboarding=1");
+  }
+
+  const publishJobId = typeof result.metadata.publish_job_id === "string" ? result.metadata.publish_job_id : null;
+  if (publishJobId) {
+    redirect(`/dashboard/jobs/${publishJobId}?justPaid=1`);
   }
 
   return (

@@ -6,6 +6,7 @@ import { Send, X, Minus, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { cn } from "@/lib/cn";
+import type { OnboardingStage } from "@/lib/onboarding-stage";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -27,19 +28,17 @@ function defaultPosition() {
   return { x: window.innerWidth - BUBBLE_SIZE - 24, y: window.innerHeight - BUBBLE_SIZE - 24 };
 }
 
-function greeting(firstName: string): string {
-  return `Welcome to RecruitCandidates${firstName ? `, ${firstName}` : ""}! Let's get your company ready to receive applications.
-
-Here's a quick checklist to get started:
-1. Upload your logo and complete your company profile
-2. Create your first job
-3. Publish it to go live
-4. Share your career page link with candidates
-
-I'm Melvina — ask me anything along the way, and I can pass a bug report or complaint straight to the team if something's not working.`;
+function greeting(firstName: string, stage: OnboardingStage): string {
+  const name = firstName ? `, ${firstName}` : "";
+  const stageMessage: Record<OnboardingStage, string> = {
+    new: `Welcome to RecruitCandidates${name}. Let's publish your first role. Start by completing your company details or creating a job.`,
+    job_drafted: "Your role is ready. Publish it to begin receiving applications.",
+    published: "Your job is live. You can now share the application link or direct candidates to your career page.",
+  };
+  return `${stageMessage[stage]}\n\nI'm Melvina — ask me anything along the way, and I can pass a bug report or complaint straight to the team if something's not working.`;
 }
 
-export function MelvinaWidget({ firstName }: { firstName: string }) {
+export function MelvinaWidget({ firstName, onboardingStage }: { firstName: string; onboardingStage: OnboardingStage }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [state, setState] = React.useState<MelvinaState>({ open: false, position: defaultPosition(), messages: [] });
@@ -75,8 +74,8 @@ export function MelvinaWidget({ firstName }: { firstName: string }) {
 
     sessionStorage.setItem(GREETED_KEY, "1");
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time onboarding greeting gated on a URL param + sessionStorage flag, not a render-loop concern.
-    setState((s) => ({ ...s, open: true, messages: [{ role: "assistant", content: greeting(firstName) }] }));
-  }, [pathname, searchParams, firstName]);
+    setState((s) => ({ ...s, open: true, messages: [{ role: "assistant", content: greeting(firstName, onboardingStage) }] }));
+  }, [pathname, searchParams, firstName, onboardingStage]);
 
   React.useEffect(() => {
     if (!hydrated.current) return;
@@ -180,7 +179,7 @@ export function MelvinaWidget({ firstName }: { firstName: string }) {
 
           <div className="flex-1 overflow-y-auto px-3 py-3">
             {state.messages.length === 0 && (
-              <p className="whitespace-pre-wrap px-1 text-sm text-foreground-muted">{greeting(firstName)}</p>
+              <p className="whitespace-pre-wrap px-1 text-sm text-foreground-muted">{greeting(firstName, onboardingStage)}</p>
             )}
             <div className="flex flex-col gap-3">
               {state.messages.map((m, i) => (

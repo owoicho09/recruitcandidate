@@ -11,6 +11,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import { jobStatusMap, stageMap } from "@/lib/status-maps";
 import { formatDate } from "@/lib/utils/format";
 import { JobActionsMenu } from "@/components/dashboard/job-actions-menu";
+import { PostPaymentBanner } from "@/components/dashboard/post-payment-banner";
 
 export const metadata: Metadata = { title: "Job" };
 
@@ -28,6 +29,7 @@ export default async function JobDetailPage({ params }: PageProps<"/dashboard/jo
 
   return (
     <div className="flex flex-col gap-6">
+      <PostPaymentBanner jobId={job.id} jobSlug={job.slug} companySlug={session.companySlug} published={job.status === "published"} />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">

@@ -7,6 +7,7 @@ import { getJob } from "@/lib/services/jobs";
 import { sendEmail, getTemplate, renderTemplate } from "@/lib/email/resend";
 import { env } from "@/lib/env";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { trackLifecycleEvent, recomputeLifecycleSegment } from "@/lib/services/lifecycle";
 
 const MAX_CV_BYTES = env.MAX_CV_FILE_MB * 1024 * 1024;
 
@@ -55,8 +56,10 @@ export async function POST(request: Request) {
 
   const usage = await checkUsage(company.id, "applications");
   if (!usage.allowed) {
+    await trackLifecycleEvent(company.id, "application_allowance_reached", null);
     return NextResponse.json({ error: "Applications for this role are temporarily unavailable. Please check back later or contact the company directly." }, { status: 429 });
   }
+  const isFirstApplication = usage.used === 0;
 
   const input = parsed.data;
   const cvBuffer = Buffer.from(await cv.arrayBuffer());
@@ -76,6 +79,9 @@ export async function POST(request: Request) {
   });
 
   if (!result) return NextResponse.json({ error: "This role is no longer accepting applications." }, { status: 404 });
+
+  if (isFirstApplication) await trackLifecycleEvent(company.id, "first_application_received", null);
+  else await recomputeLifecycleSegment(company.id);
 
   const job = await getJob(company.id, jobId);
   const template = await getTemplate(company.id, "application_received");

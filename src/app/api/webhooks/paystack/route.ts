@@ -19,6 +19,8 @@ import {
   cancelCompanyAddon,
   recordPayment,
 } from "@/lib/services/plan-access";
+import { setJobStatus } from "@/lib/services/jobs";
+import { trackLifecycleEvent } from "@/lib/services/lifecycle";
 import { sendEmail } from "@/lib/email/resend";
 import { env } from "@/lib/env";
 
@@ -74,7 +76,7 @@ interface PaystackWebhookEvent {
     reference?: string;
     amount?: number;
     currency?: string;
-    metadata?: { plan_id?: string; purpose?: string; sku?: string };
+    metadata?: { plan_id?: string; purpose?: string; sku?: string; publish_job_id?: string };
     customer?: { customer_code?: string; email?: string };
     subscription_code?: string;
     plan?: { plan_code?: string };
@@ -99,6 +101,7 @@ async function processEvent(event: PaystackWebhookEvent, companyId?: string) {
     case "invoice.payment_failed": {
       if (!companyId) return;
       await markPastDue(companyId, env.PAYMENT_GRACE_PERIOD_DAYS);
+      await trackLifecycleEvent(companyId, "subscription_payment_failed");
       const ownerEmail = await getCompanyOwnerEmail(companyId);
       if (ownerEmail) {
         await sendEmail({ companyId, type: "payment_failed", to: ownerEmail, subject: "Your RecruitCandidates payment failed", body: "We couldn't process your latest payment. Please update your payment method to avoid service interruption." });
@@ -148,6 +151,8 @@ async function handleSubscriptionCharge(event: PaystackWebhookEvent, companyId: 
     authorizationCode,
   );
 
+  if (!wasAlreadyActive) await trackLifecycleEvent(companyId, "subscription_activated", null, { plan_id: planId });
+
   if (event.data.reference) {
     await recordPayment({
       companyId,
@@ -165,6 +170,14 @@ async function handleSubscriptionCharge(event: PaystackWebhookEvent, companyId: 
   // Renewal (not the first activation) — recharge active recurring add-ons on the same cycle.
   if (wasAlreadyActive && authorizationCode) {
     await rechargeRecurringAddons(companyId, authorizationCode, event.data.customer?.email ?? "");
+  }
+
+  // Checkout was triggered from a "publish this job" prompt — finish what the
+  // payment was actually for instead of leaving the user to come back and
+  // publish manually.
+  const publishJobId = event.data.metadata?.publish_job_id;
+  if (publishJobId) {
+    await setJobStatus(companyId, publishJobId, "published");
   }
 }
 

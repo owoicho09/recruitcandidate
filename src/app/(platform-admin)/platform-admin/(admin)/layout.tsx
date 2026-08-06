@@ -1,13 +1,14 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
-  LayoutDashboard, Building2, Users, CreditCard, Receipt, Gauge, Briefcase, FileText, Activity, Shield, LogOut, Sparkles,
+  LayoutDashboard, Building2, Users, CreditCard, Receipt, Gauge, Briefcase, FileText, Activity, Shield, LogOut, Sparkles, GitBranch,
 } from "lucide-react";
 import { requirePlatformAdmin } from "@/lib/auth/require-platform-admin";
 
 const NAV = [
   { href: "/platform-admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/platform-admin/companies", label: "Companies", icon: Building2 },
+  { href: "/platform-admin/lifecycle", label: "Lifecycle", icon: GitBranch },
   { href: "/platform-admin/users", label: "Users", icon: Users },
   { href: "/platform-admin/subscriptions", label: "Subscriptions", icon: CreditCard },
   { href: "/platform-admin/payments", label: "Payments", icon: Receipt },

@@ -7,6 +7,15 @@ export type CompanyRole = "owner" | "admin" | "recruiter" | "hiring_manager" | "
 export type MemberStatus = "invited" | "active" | "suspended";
 export type CareerPageStatus = "unpublished" | "published";
 
+export type LifecycleSegment =
+  | "signup_incomplete_setup"
+  | "setup_complete_no_job"
+  | "draft_not_subscribed"
+  | "subscribed_not_published"
+  | "published_no_applications"
+  | "receiving_applications"
+  | "at_plan_limit";
+
 export interface Company {
   id: string;
   name: string;
@@ -26,8 +35,52 @@ export interface Company {
   social_links: { linkedin?: string; twitter?: string; facebook?: string };
   recruitment_message: string | null;
   show_company_details: boolean;
+  lifecycle_segment: LifecycleSegment;
+  lifecycle_segment_updated_at: string;
   created_at: string;
   updated_at: string;
+}
+
+export type LifecycleEventType =
+  | "account_created"
+  | "email_verified"
+  | "company_profile_completed"
+  | "logo_uploaded"
+  | "career_page_previewed"
+  | "first_draft_job_created"
+  | "subscription_started"
+  | "subscription_activated"
+  | "first_job_published"
+  | "first_application_received"
+  | "application_allowance_reached"
+  | "subscription_cancelled"
+  | "subscription_payment_failed";
+
+export interface LifecycleEvent {
+  id: string;
+  company_id: string;
+  user_id: string | null;
+  event_type: LifecycleEventType;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export type LifecycleEmailStatus = "scheduled" | "sent" | "cancelled" | "failed";
+
+export interface LifecycleEmail {
+  id: string;
+  company_id: string;
+  recipient: string;
+  segment: LifecycleSegment;
+  email_type: string;
+  subject: string;
+  status: LifecycleEmailStatus;
+  resend_id: string | null;
+  scheduled_for: string;
+  sent_at: string | null;
+  cancelled_at: string | null;
+  failure_reason: string | null;
+  created_at: string;
 }
 
 export interface CompanyMember {

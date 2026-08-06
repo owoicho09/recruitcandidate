@@ -39,6 +39,7 @@ export function BillingDashboard({
   companyAddons,
   usage,
   canManage,
+  publishJobId,
 }: {
   subscription: Subscription | null;
   plan: Plan | null;
@@ -48,9 +49,10 @@ export function BillingDashboard({
   companyAddons: CompanyAddon[];
   usage: UsageSummary;
   canManage: boolean;
+  publishJobId?: string | null;
 }) {
   const toast = useToast();
-  const [planDialogOpen, setPlanDialogOpen] = React.useState(false);
+  const [planDialogOpen, setPlanDialogOpen] = React.useState(Boolean(publishJobId) && !subscription);
   const [cancelOpen, setCancelOpen] = React.useState(false);
   const [addonDialog, setAddonDialog] = React.useState<AddonProduct["kind"] | null>(null);
   const [annual, setAnnual] = React.useState(plan?.interval === "annual");
@@ -58,7 +60,7 @@ export function BillingDashboard({
 
   async function checkout(planId: string) {
     setBusy(true);
-    const res = await fetch("/api/billing/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId }) });
+    const res = await fetch("/api/billing/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId, publishJobId }) });
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (res.ok) {
@@ -138,7 +140,11 @@ export function BillingDashboard({
       {!subscription && (
         <Card className="flex items-center gap-3 border-accent/30 bg-accent-soft p-5">
           <Sparkles className="size-5 shrink-0 text-accent" />
-          <p className="text-sm text-accent">You can explore your whole workspace for free. Choose a plan whenever you&apos;re ready to publish jobs and receive applications.</p>
+          <p className="text-sm text-accent">
+            {publishJobId
+              ? "Your job is ready to publish. Choose a plan to start receiving applications."
+              : "You can explore your whole workspace for free. Choose a plan whenever you're ready to publish jobs and receive applications."}
+          </p>
         </Card>
       )}
 

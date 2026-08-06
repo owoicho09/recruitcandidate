@@ -75,6 +75,8 @@ export const company: Company = {
   recruitment_message:
     "We hire for craft and judgement over pedigree. Every application is read by a human before any decision is made.",
   show_company_details: true,
+  lifecycle_segment: "receiving_applications",
+  lifecycle_segment_updated_at: daysAgo(30),
   created_at: daysAgo(180),
   updated_at: daysAgo(2),
 };

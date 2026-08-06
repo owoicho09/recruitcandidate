@@ -7,7 +7,31 @@ import { sendEmail } from "@/lib/email/resend";
 import { env, DEMO_MODE } from "@/lib/env";
 import { templateDefaults } from "@/lib/data/fixtures";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { slugify } from "@/lib/utils/slug";
+import { trackLifecycleEvent } from "@/lib/services/lifecycle";
 import type { Company, CompanyMember } from "@/types/database";
+
+/** No slug is collected at signup — derive one from the company name and de-duplicate against whatever already exists. */
+async function generateUniqueSlug(companyName: string): Promise<string> {
+  const base = slugify(companyName) || "workspace";
+
+  if (DEMO_MODE) {
+    let slug = base;
+    let suffix = 2;
+    while (mockStore.companies.some((c) => c.slug === slug)) slug = `${base}-${suffix++}`;
+    return slug;
+  }
+
+  const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
+  const admin = createAdminSupabaseClient();
+  let slug = base;
+  let suffix = 2;
+  for (;;) {
+    const { data } = await admin.from("companies").select("id").eq("slug", slug).maybeSingle();
+    if (!data) return slug;
+    slug = `${base}-${suffix++}`;
+  }
+}
 
 export async function POST(request: Request) {
   const allowed = await checkRateLimit(`signup:${getClientIp(request)}`, 5, 60 * 60);
@@ -19,9 +43,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid submission", fieldErrors: parsed.error.flatten().fieldErrors }, { status: 400 });
   }
   const input = parsed.data;
+  const slug = await generateUniqueSlug(input.companyName);
 
-  const { companyId, error } = DEMO_MODE ? await createDemoAccount(input) : await createLiveAccount(input);
+  const { companyId, userId, error } = DEMO_MODE ? await createDemoAccount(input, slug) : await createLiveAccount(input, slug);
   if (error) return NextResponse.json({ error }, { status: 409 });
+
+  await trackLifecycleEvent(companyId!, "account_created", userId ?? null);
 
   await notifySignup(companyId!, input.workEmail, input.firstName, input.companyName);
 
@@ -30,15 +57,12 @@ export async function POST(request: Request) {
 
 /**
  * No subscription is created at signup — accounts can explore the dashboard
- * immediately, and job creation/publishing is gated on choosing a plan from
- * the billing page (see plan-access service's hasActiveSubscription check).
+ * and draft jobs freely; only publishing a job requires choosing a plan
+ * (see the jobs/[id]/status route's checkUsage("active_jobs") gate).
  */
-async function createDemoAccount(input: ReturnType<typeof signupSchema.parse>) {
+async function createDemoAccount(input: ReturnType<typeof signupSchema.parse>, slug: string) {
   if (mockStore.users.some((u) => u.email.toLowerCase() === input.workEmail.toLowerCase())) {
     return { error: "An account with this email already exists." };
-  }
-  if (mockStore.companies.some((c) => c.slug === input.slug)) {
-    return { error: "That workspace URL is already taken." };
   }
 
   const now = new Date().toISOString();
@@ -48,22 +72,24 @@ async function createDemoAccount(input: ReturnType<typeof signupSchema.parse>) {
   const company: Company = {
     id: companyId,
     name: input.companyName,
-    slug: input.slug,
+    slug,
     logo_url: null,
-    description: input.description ?? null,
-    industry: input.industry,
-    size: input.size,
-    country: input.country,
-    city: input.city,
-    website: input.website || null,
-    contact_email: input.contactEmail,
-    brand_color: input.brandColor,
-    timezone: input.timezone,
-    career_page_status: "unpublished",
+    description: null,
+    industry: null,
+    size: null,
+    country: null,
+    city: null,
+    website: null,
+    contact_email: input.workEmail,
+    brand_color: "#3730a3",
+    timezone: "Africa/Lagos",
+    career_page_status: "published",
     header_style: "gradient",
     social_links: {},
     recruitment_message: null,
     show_company_details: true,
+    lifecycle_segment: "signup_incomplete_setup",
+    lifecycle_segment_updated_at: now,
     created_at: now,
     updated_at: now,
   };
@@ -113,13 +139,10 @@ async function createDemoAccount(input: ReturnType<typeof signupSchema.parse>) {
   return { companyId, userId, error: null };
 }
 
-async function createLiveAccount(input: ReturnType<typeof signupSchema.parse>) {
+async function createLiveAccount(input: ReturnType<typeof signupSchema.parse>, slug: string) {
   const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
   const { createServerSupabaseClient } = await import("@/lib/supabase/server");
   const admin = createAdminSupabaseClient();
-
-  const { data: existingCompany } = await admin.from("companies").select("id").eq("slug", input.slug).maybeSingle();
-  if (existingCompany) return { error: "That workspace URL is already taken." };
 
   const { data: created, error: createUserError } = await admin.auth.admin.createUser({
     email: input.workEmail,
@@ -140,17 +163,17 @@ async function createLiveAccount(input: ReturnType<typeof signupSchema.parse>) {
     .from("companies")
     .insert({
       name: input.companyName,
-      slug: input.slug,
-      description: input.description || null,
-      industry: input.industry,
-      size: input.size,
-      country: input.country,
-      city: input.city,
-      website: input.website || null,
-      contact_email: input.contactEmail,
-      brand_color: input.brandColor,
-      timezone: input.timezone,
-      career_page_status: "unpublished",
+      slug,
+      description: null,
+      industry: null,
+      size: null,
+      country: null,
+      city: null,
+      website: null,
+      contact_email: input.workEmail,
+      brand_color: "#3730a3",
+      timezone: "Africa/Lagos",
+      career_page_status: "published",
       header_style: "gradient",
       social_links: {},
       show_company_details: true,

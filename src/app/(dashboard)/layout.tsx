@@ -7,11 +7,17 @@ import { Topbar } from "@/components/dashboard/topbar";
 import { SubscriptionBanner } from "@/components/dashboard/subscription-banner";
 import { getSubscription } from "@/lib/services/plan-access";
 import { MelvinaWidget } from "@/components/dashboard/melvina-widget";
+import { listJobs } from "@/lib/services/jobs";
+import { onboardingStageFor } from "@/lib/onboarding-stage";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const session = await requireSession();
-  const company = await getCompany(session.companyId);
-  const subscription = await getSubscription(session.companyId);
+  const [company, subscription, jobs] = await Promise.all([
+    getCompany(session.companyId),
+    getSubscription(session.companyId),
+    listJobs(session.companyId),
+  ]);
+  const onboardingStage = onboardingStageFor(jobs);
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
@@ -28,7 +34,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">{children}</main>
       </div>
       <Suspense fallback={null}>
-        <MelvinaWidget firstName={session.fullName.split(" ")[0] || session.fullName} />
+        <MelvinaWidget firstName={session.fullName.split(" ")[0] || session.fullName} onboardingStage={onboardingStage} />
       </Suspense>
     </div>
   );

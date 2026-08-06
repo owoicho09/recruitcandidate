@@ -3,6 +3,8 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/require-session";
 import { getCompany } from "@/lib/services/companies";
 import { getPlanForCompany } from "@/lib/services/plan-access";
+import { listJobs } from "@/lib/services/jobs";
+import { onboardingStageFor } from "@/lib/onboarding-stage";
 import { createMelvinaStream, extractComplaint } from "@/lib/ai/melvina";
 import { sendPlatformEmail } from "@/lib/email/resend";
 import { logMelvinaExchange } from "@/lib/services/melvina-log";
@@ -18,12 +20,13 @@ export async function POST(request: Request) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
-  const [company, plan] = await Promise.all([getCompany(session.companyId), getPlanForCompany(session.companyId)]);
+  const [company, plan, jobs] = await Promise.all([getCompany(session.companyId), getPlanForCompany(session.companyId), listJobs(session.companyId)]);
   const context = {
     firstName: session.fullName.split(" ")[0] || session.fullName,
     companyName: company?.name ?? "your workspace",
     role: session.role,
     planName: plan?.name ?? null,
+    onboardingStage: onboardingStageFor(jobs),
   };
 
   const melvinaStream = await createMelvinaStream(parsed.data.messages, context);

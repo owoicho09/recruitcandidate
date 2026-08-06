@@ -3,6 +3,7 @@ import { mockStore } from "@/lib/data/store";
 import { id, daysFromNow } from "@/lib/data/ids";
 import { generateToken, hashToken } from "@/lib/utils/token";
 import { sendEmail, getTemplate, renderTemplate } from "@/lib/email/resend";
+import { env } from "@/lib/env";
 import type { CompanyMember, CompanyRole, TeamInvitation } from "@/types/database";
 
 export async function listMembers(companyId: string): Promise<CompanyMember[]> {
@@ -44,8 +45,8 @@ export async function inviteMember(companyId: string, invitedBy: string, email: 
     const template = await getTemplate(companyId, "team_invitation");
     const subject = template ? renderTemplate(template.subject, { company: company!.name }) : `You've been invited to join ${company!.name}`;
     const body = template
-      ? renderTemplate(template.body, { company: company!.name, inviter: inviter?.full_name ?? "A teammate", link: `/accept-invite?token=${token}` })
-      : `Join ${company!.name} on RecruitCandidates: /accept-invite?token=${token}`;
+      ? renderTemplate(template.body, { company: company!.name, inviter: inviter?.full_name ?? "A teammate", link: `${env.NEXT_PUBLIC_APP_URL}/accept-invite?token=${token}` })
+      : `Join ${company!.name} on RecruitCandidates: ${env.NEXT_PUBLIC_APP_URL}/accept-invite?token=${token}`;
 
     await sendEmail({ companyId, type: "team_invitation", to: email, subject, body, createdBy: invitedBy });
 
@@ -70,8 +71,8 @@ export async function inviteMember(companyId: string, invitedBy: string, email: 
   const template = await getTemplate(companyId, "team_invitation");
   const subject = template ? renderTemplate(template.subject, { company: company.name }) : `You've been invited to join ${company.name}`;
   const body = template
-    ? renderTemplate(template.body, { company: company.name, inviter: inviter?.full_name ?? "A teammate", link: `/accept-invite?token=${token}` })
-    : `Join ${company.name} on RecruitCandidates: /accept-invite?token=${token}`;
+    ? renderTemplate(template.body, { company: company.name, inviter: inviter?.full_name ?? "A teammate", link: `${env.NEXT_PUBLIC_APP_URL}/accept-invite?token=${token}` })
+    : `Join ${company.name} on RecruitCandidates: ${env.NEXT_PUBLIC_APP_URL}/accept-invite?token=${token}`;
 
   await sendEmail({ companyId, type: "team_invitation", to: email, subject, body, createdBy: invitedBy });
 

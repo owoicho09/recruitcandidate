@@ -1,0 +1,242 @@
+Use this prompt for Claude Code:
+
+---
+
+Add lifecycle segmentation and follow-up email automation to RecruitCandidates so every company signup is grouped based on how far they have progressed toward publishing a job and using the platform.
+
+The goal is to build a warm audience from people who create accounts but do not subscribe immediately, then follow up with messages that match their exact stage instead of sending everyone the same email.
+
+Create these lifecycle segments:
+
+* Signed up but did not complete company setup
+* Completed company setup but did not create a job
+* Created a draft job but did not subscribe
+* Subscribed but did not publish a job
+* Published a job but has no applications
+* Receiving applications
+* Reached plan limit
+
+A user or company should always belong to the most relevant current segment. Their segment should update automatically whenever they complete an important action.
+
+Use the company workspace as the main lifecycle record, not just the individual user account, because multiple team members may belong to the same company.
+
+Track these events:
+
+* Account created
+* Email verified
+* Company profile completed
+* Logo uploaded
+* Career page previewed
+* First draft job created
+* Subscription started
+* Subscription activated
+* First job published
+* First application received
+* Application allowance reached
+* Subscription cancelled
+* Subscription payment failed
+
+Store the current lifecycle segment on the company and also maintain a lifecycle-event history so movement between segments can be reviewed later.
+
+The segment logic should work like this:
+
+### Signed up but did not complete company setup
+
+Conditions:
+
+* Account and company workspace exist
+* Company profile is incomplete
+* No job has been created
+
+Recommended follow-up:
+
+> Complete your company profile and get your recruitment page ready.
+
+CTA:
+
+> Finish company setup
+
+### Completed company setup but did not create a job
+
+Conditions:
+
+* Company profile is complete
+* No draft or published job exists
+
+Recommended follow-up:
+
+> Your company page is ready. Create your first role to start collecting applications.
+
+CTA:
+
+> Create your first job
+
+### Created a draft job but did not subscribe
+
+Conditions:
+
+* At least one draft job exists
+* No active paid subscription
+* No published job exists
+
+This is the highest-intent unpaid segment and should receive the strongest follow-up.
+
+Use this message direction:
+
+**Subject:** Your role is still saved in RecruitCandidates
+
+**Body:**
+
+> Your role is still saved in RecruitCandidates. Choose a plan to publish it and start receiving applications through your company’s recruitment page.
+
+CTA:
+
+> Publish your role
+
+The CTA should take them directly to the saved draft or billing step required to publish it.
+
+### Subscribed but did not publish
+
+Conditions:
+
+* Active subscription exists
+* At least one draft job exists or no published job exists
+* No active published role
+
+Recommended follow-up:
+
+> Your workspace is active. Publish your first role and start receiving candidates.
+
+CTA:
+
+> Publish your first role
+
+### Published but has no applications
+
+Conditions:
+
+* At least one published job exists
+* Total applications are zero
+
+Recommended follow-up:
+
+> Your job is live. Share your application link or career page to start receiving candidates.
+
+CTA options:
+
+* Copy application link
+* View career page
+
+### Receiving applications
+
+Conditions:
+
+* At least one application exists
+* Company is below its plan limit
+
+This is an active customer segment.
+
+Do not send basic onboarding reminders.
+
+Use this segment for:
+
+* Product education
+* Screening tips
+* Assessment and video interview guidance
+* Usage summaries
+* Feature adoption messages
+
+### Reached plan limit
+
+Conditions:
+
+* Application usage has reached the allowed plan capacity, including purchased add-ons and grace usage
+
+Recommended follow-up:
+
+> Your company has reached its current application allowance. Buy more applications or upgrade your plan to keep receiving candidates.
+
+CTA options:
+
+* Buy more applications
+* Upgrade plan
+
+Do not mention plan limits in candidate-facing emails or public job pages.
+
+Add a lifecycle automation system that can send emails based on both segment and inactivity.
+
+Suggested timing:
+
+* Signed up but incomplete setup: 24 hours after signup
+* Setup complete but no job: 24 hours after setup completion
+* Draft job but not subscribed: 2 hours after draft creation, then 24 hours later, then 72 hours later
+* Subscribed but not published: 6 hours after subscription activation, then 24 hours later
+* Published but no applications: 24 hours after publishing, then 72 hours later
+* Reached plan limit: immediately, then once again after 24 hours if unresolved
+
+Do not send repeated reminders after the user completes the required action. Cancel or skip pending messages as soon as the company moves into another segment.
+
+Use Resend for lifecycle emails.
+
+Store the Resend ID for scheduled emails so pending reminders can be cancelled when the company progresses.
+
+Create a lifecycle email log containing:
+
+* company_id
+* user_id or recipient
+* lifecycle segment
+* email type
+* subject
+* status
+* resend_id
+* scheduled_for
+* sent_at
+* cancelled_at
+* failure reason
+* created_at
+
+Avoid sending multiple lifecycle emails to different team members in the same company. By default, send onboarding and billing-related messages to the company owner.
+
+Allow platform admins to inspect:
+
+* Current segment per company
+* Time spent in each segment
+* Last lifecycle email sent
+* Next scheduled email
+* Companies with draft jobs but no subscription
+* Companies subscribed but not published
+* Companies with live jobs but no applications
+* Companies at or near usage limits
+
+Add simple filters in the platform admin for every segment.
+
+Create internal analytics for:
+
+* Signups
+* Company setup completion
+* Draft jobs created
+* Paid subscriptions
+* Jobs published
+* First applications received
+* Conversion from signup to draft job
+* Conversion from draft job to paid subscription
+* Conversion from subscription to published role
+* Conversion from published role to first application
+
+The most important funnel should be visible as:
+
+**Signup → Company setup → Draft job → Subscription → Published job → First application**
+
+Treat “draft job created but not subscribed” as the highest-priority warm audience because they have already invested effort and shown clear buying intent.
+
+Do not use a separate marketing platform for the first version. Keep the segmentation, automation and reporting inside RecruitCandidates using the existing database and Resend setup.
+
+Keep the implementation aligned with the current onboarding flow:
+
+* Users can create and explore their workspace before subscribing
+* Users can create a draft job before subscribing
+* Subscription is required when they try to publish the job
+* After payment, return them to the saved draft and make publishing the next clear action
+
+Do not change unrelated product features or redesign the dashboard beyond what is needed to support lifecycle tracking and follow-up emails.
+Add internal funnel tracking for completed signups, company setup completion, first draft job creation, subscription activation, first published job and first application received. Show total counts, conversion percentages and drop-off between these stages in the platform admin.

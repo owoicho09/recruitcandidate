@@ -21,6 +21,15 @@ import type { Job } from "@/types/database";
 
 const DEFAULT_WEIGHTS = { required_skills: 30, relevant_experience: 25, transferable_experience: 15, education: 10, certifications: 5, achievements: 10, application_answers: 5 };
 
+const TAB_FOR_FIELD: Record<string, "details" | "requirements" | "screening"> = {
+  title: "details", slug: "details", department: "details", location: "details",
+  work_arrangement: "details", employment_type: "details", salary_min: "details", salary_max: "details",
+  currency: "details", summary: "details", description: "details", openings_count: "details", closing_date: "details",
+  responsibilities: "requirements", required_skills: "requirements", preferred_skills: "requirements",
+  min_experience: "requirements", education_requirements: "requirements", other_requirements: "requirements",
+  application_questions: "requirements", screening_weights: "screening",
+};
+
 function toFormValues(job?: Job): JobFormInput {
   if (!job) {
     return {
@@ -48,6 +57,7 @@ export function JobForm({ job }: { job?: Job }) {
   const router = useRouter();
   const toast = useToast();
   const [slugTouched, setSlugTouched] = React.useState(Boolean(job));
+  const [activeTab, setActiveTab] = React.useState<"details" | "requirements" | "screening">("details");
 
   const {
     register, control, handleSubmit, watch, setValue,
@@ -71,26 +81,35 @@ export function JobForm({ job }: { job?: Job }) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      if (data.requiresPlan) {
-        toast.error("Choose a plan first", "You'll need an active plan before creating jobs.");
-        router.push("/dashboard/billing");
-        return;
-      }
       toast.error("Couldn't save job", data.error);
       return;
     }
-    toast.success(job ? "Job updated" : "Job created");
+    if (job) {
+      toast.success("Job updated");
+    } else {
+      toast.success("Job created as a draft", "It won't appear on your career page until you publish it — open the job and click Publish when you're ready.");
+    }
     router.push(`/dashboard/jobs/${data.job.id}`);
     router.refresh();
   }
 
+  function onError(formErrors: typeof errors) {
+    const firstErrorField = Object.keys(formErrors)[0];
+    const tab = firstErrorField ? TAB_FOR_FIELD[firstErrorField] : undefined;
+    if (tab && tab !== activeTab) setActiveTab(tab);
+    toast.error("Check the highlighted fields", "Some required fields are missing or invalid.");
+  }
+
+  const tabHasError = (tab: "details" | "requirements" | "screening") =>
+    Object.keys(errors).some((field) => TAB_FOR_FIELD[field] === tab);
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
-      <Tabs defaultValue="details">
+    <form onSubmit={handleSubmit(onSubmit, onError)} className="flex flex-col gap-6">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
         <TabsList>
-          <TabsTrigger value="details">Job Details</TabsTrigger>
-          <TabsTrigger value="requirements">Requirements & Questions</TabsTrigger>
-          <TabsTrigger value="screening">Screening Weights</TabsTrigger>
+          <TabsTrigger value="details">Job Details{tabHasError("details") && <span className="ml-1.5 inline-block size-1.5 rounded-full bg-danger" />}</TabsTrigger>
+          <TabsTrigger value="requirements">Requirements & Questions{tabHasError("requirements") && <span className="ml-1.5 inline-block size-1.5 rounded-full bg-danger" />}</TabsTrigger>
+          <TabsTrigger value="screening">Screening Weights{tabHasError("screening") && <span className="ml-1.5 inline-block size-1.5 rounded-full bg-danger" />}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="details">

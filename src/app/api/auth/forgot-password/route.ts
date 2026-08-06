@@ -54,7 +54,7 @@ export async function POST(request: Request) {
       type: "password_reset",
       to: user.email,
       subject: "Reset your RecruitCandidates password",
-      body: `Reset your password: /reset-password?token=${token}`,
+      body: `Reset your password: ${env.NEXT_PUBLIC_APP_URL}/reset-password?token=${token}`,
     });
   }
 

@@ -58,19 +58,29 @@ export default async function DashboardOverviewPage() {
     .slice(0, 5);
 
   const checklistItems = [
-    { label: "Upload logo", href: "/dashboard/career-page", done: Boolean(company?.logo_url) },
-    { label: "Complete company information", href: "/dashboard/career-page", done: Boolean(company?.description) },
-    { label: "Preview career page", href: `/${session.companySlug}/careers`, done: company?.career_page_status === "published" },
-    { label: "Create first job", href: "/dashboard/jobs/new", done: jobs.length > 0 },
-    { label: "Publish role", href: "/dashboard/jobs", done: activeJobs > 0 },
-    { label: "Copy career page link", href: "/dashboard/career-page", done: false },
+    { label: "Create job", href: "/dashboard/jobs/new", done: jobs.length > 0 },
+    { label: "Complete company profile", href: "/dashboard/career-page", done: Boolean(company?.description) },
+    { label: "View your career page", href: `/${session.companySlug}/careers`, done: false },
   ];
 
   const usagePct = plan && usage ? Math.round((usage.applications / plan.limits.applications) * 100) : 0;
 
+  const firstName = session.fullName.split(" ")[0] || session.fullName;
+
   return (
     <div className="flex flex-col gap-6">
-      <OnboardingChecklist items={checklistItems} companySlug={session.companySlug} />
+      {jobs.length === 0 ? (
+        <Card className="flex flex-col items-center gap-3 p-8 text-center">
+          <p className="text-lg font-semibold text-foreground">Welcome, {firstName}. Let&apos;s get your first role live.</p>
+          <p className="text-sm text-foreground-muted">You can explore freely — nothing here requires a plan until you&apos;re ready to publish.</p>
+          <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+            <Button href="/dashboard/jobs/new"><Plus className="size-4" /> Create your first job</Button>
+            <Button href={`/${session.companySlug}/careers`} variant="secondary">Preview career page</Button>
+          </div>
+        </Card>
+      ) : (
+        <OnboardingChecklist items={checklistItems} companySlug={session.companySlug} />
+      )}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         <StatCard label="Active jobs" value={activeJobs} icon={Briefcase} />

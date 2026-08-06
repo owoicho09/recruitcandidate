@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/require-session";
 import { careerPageSchema } from "@/lib/validation/career-page";
-import { updateCompany } from "@/lib/services/companies";
+import { getCompany, updateCompany } from "@/lib/services/companies";
+import { trackCompanyProfileUpdate } from "@/lib/services/lifecycle";
 
 export async function PATCH(request: Request) {
   const session = await requireSession("admin");
@@ -12,6 +13,7 @@ export async function PATCH(request: Request) {
   }
   const input = parsed.data;
 
+  const before = await getCompany(session.companyId);
   const company = await updateCompany(session.companyId, {
     description: input.description || null,
     brand_color: input.brandColor,
@@ -27,5 +29,6 @@ export async function PATCH(request: Request) {
   });
 
   if (!company) return NextResponse.json({ error: "Company not found" }, { status: 404 });
+  await trackCompanyProfileUpdate(session.companyId, session.userId, before, company);
   return NextResponse.json({ company });
 }

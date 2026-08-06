@@ -17,6 +17,11 @@ export function JobActionsMenu({ job, companySlug }: { job: Job; companySlug: st
     const res = await fetch(`/api/jobs/${job.id}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      if (data.requiresPlan) {
+        toast.error("Your job is ready to publish", "Choose a plan to start receiving applications.");
+        router.push(`/dashboard/billing?publishJobId=${job.id}`);
+        return;
+      }
       toast.error("Couldn't update job", data.error);
       return;
     }

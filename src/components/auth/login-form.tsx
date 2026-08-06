@@ -8,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Sparkles } from "lucide-react";
 import { loginSchema, type LoginInput } from "@/lib/validation/auth";
 import { Card, CardContent } from "@/components/ui/card";
-import { Field, Input } from "@/components/ui/input";
+import { Field, Input, PasswordInput } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 const DEMO_ROLES = [
@@ -56,7 +56,7 @@ export function LoginForm() {
               <Input id="email" type="email" autoComplete="email" {...register("email")} />
             </Field>
             <Field label="Password" htmlFor="password" required error={errors.password?.message}>
-              <Input id="password" type="password" autoComplete="current-password" {...register("password")} />
+              <PasswordInput id="password" autoComplete="current-password" {...register("password")} />
             </Field>
             <div className="flex justify-end">
               <Link href="/forgot-password" className="text-sm text-accent hover:underline">Forgot password?</Link>

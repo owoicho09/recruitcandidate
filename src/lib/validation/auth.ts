@@ -9,19 +9,6 @@ export const signupAccountSchema = z.object({
 
 export const signupCompanySchema = z.object({
   companyName: z.string().min(1, "Company name is required"),
-  slug: z
-    .string()
-    .min(2, "Slug must be at least 2 characters")
-    .regex(/^[a-z0-9-]+$/, "Lowercase letters, numbers, and hyphens only"),
-  description: z.string().optional(),
-  industry: z.string().min(1, "Industry is required"),
-  size: z.string().min(1, "Company size is required"),
-  country: z.string().min(1, "Country is required"),
-  city: z.string().min(1, "City is required"),
-  contactEmail: z.string().email("Enter a valid contact email"),
-  website: z.string().url("Enter a valid URL").optional().or(z.literal("")),
-  brandColor: z.string().min(1),
-  timezone: z.string().min(1),
 });
 
 export const signupSchema = signupAccountSchema.extend(signupCompanySchema.shape);

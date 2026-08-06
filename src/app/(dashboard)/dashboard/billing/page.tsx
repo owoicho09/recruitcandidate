@@ -6,8 +6,10 @@ import { BillingDashboard } from "@/components/dashboard/billing-dashboard";
 
 export const metadata: Metadata = { title: "Billing" };
 
-export default async function BillingPage() {
+export default async function BillingPage({ searchParams }: PageProps<"/dashboard/billing">) {
   const session = await requireSession();
+  const params = await searchParams;
+  const publishJobId = typeof params.publishJobId === "string" ? params.publishJobId : null;
   const [subscription, plan, plans, payments, addonProducts, companyAddons, usage] = await Promise.all([
     getSubscription(session.companyId),
     getPlanForCompany(session.companyId),
@@ -33,6 +35,7 @@ export default async function BillingPage() {
         companyAddons={companyAddons}
         usage={usage}
         canManage={session.role === "owner"}
+        publishJobId={publishJobId}
       />
     </div>
   );
