@@ -1,21 +1,28 @@
 import { redirect } from "next/navigation";
-import { CheckCircle2 } from "lucide-react";
 import { requireSession } from "@/lib/auth/require-session";
 import { verifyTransaction } from "@/lib/billing/paystack";
-import { activateSubscription, getSubscription, getPlan, getAddonProductBySku, fulfillAddonPurchase, recordPayment } from "@/lib/services/plan-access";
+import {
+  activateSubscription,
+  getSubscription,
+  getPlan,
+  getAddonProductBySku,
+  fulfillAddonPurchase,
+  recordPayment,
+  getCompanyOwnerEmail,
+} from "@/lib/services/plan-access";
 import { setJobStatus } from "@/lib/services/jobs";
 import { trackLifecycleEvent } from "@/lib/services/lifecycle";
-import { flags } from "@/lib/env";
+import { sendEmail } from "@/lib/email/resend";
 import { ErrorState } from "@/components/ui/states";
-import { Button } from "@/components/ui/button";
 
 /**
- * Never activates a plan or add-on by itself in live mode — the Paystack
- * webhook is the sole source of truth there (spec: "do not activate plans or
- * add-ons from the browser callback alone"). This page's inline
- * verify-then-activate shortcut only runs in demo mode, where no real
- * webhook can ever reach /api/webhooks/paystack. In live mode it's a plain
- * "payment received, confirming" holding screen.
+ * Activates the subscription/add-on straight off Paystack's verify response
+ * — a real server-to-server call to Paystack made below, not client-supplied
+ * data — instead of making the user wait on the webhook. activateSubscription
+ * and recordPayment both upsert by company/reference, so this is safe to run
+ * alongside /api/webhooks/paystack, which still fires and stays the only path
+ * for renewals (no browser present) and stays a harmless no-op here when it
+ * lands after this page already activated things.
  */
 export default async function BillingCallbackPage({ searchParams }: PageProps<"/dashboard/billing/callback">) {
   const session = await requireSession("owner");
@@ -31,69 +38,74 @@ export default async function BillingCallbackPage({ searchParams }: PageProps<"/
     return <ErrorState title="Payment not confirmed" description="Paystack reported this transaction as unsuccessful. No charge was applied." action={{ label: "Back to billing", href: "/dashboard/billing" }} />;
   }
 
-  if (!flags.hasPaystack) {
-    const purpose = result.metadata.purpose ?? "subscription";
-    const publishJobId = typeof result.metadata.publish_job_id === "string" ? result.metadata.publish_job_id : null;
+  const purpose = result.metadata.purpose ?? "subscription";
+  const publishJobId = typeof result.metadata.publish_job_id === "string" ? result.metadata.publish_job_id : null;
 
-    if (purpose === "subscription") {
-      const existing = await getSubscription(session.companyId);
-      const planId = result.metadata.plan_id ?? existing?.plan_id;
-      if (planId) {
-        const subscription = await activateSubscription(session.companyId, planId, result.customerCode ?? "CUS_demo", result.subscriptionCode ?? "SUB_demo", result.authorizationCode ?? undefined);
-        const purchasedPlan = await getPlan(planId);
-        await recordPayment({
-          companyId: session.companyId,
-          subscriptionId: subscription.id,
-          paystackReference: reference,
-          paystackTransactionId: null,
-          amount: purchasedPlan?.amount ?? 0,
-          currency: purchasedPlan?.currency ?? "NGN",
-          status: "success",
-          paidAt: new Date().toISOString(),
-          metadata: result.metadata,
-        });
+  if (purpose === "subscription") {
+    const existing = await getSubscription(session.companyId);
+    const wasAlreadyActive = existing?.status === "active" || existing?.status === "non_renewing";
+    const planId = result.metadata.plan_id ?? existing?.plan_id;
+
+    if (planId) {
+      const subscription = await activateSubscription(
+        session.companyId,
+        planId,
+        result.customerCode ?? "CUS_unknown",
+        result.subscriptionCode ?? "SUB_unknown",
+        result.authorizationCode ?? undefined,
+      );
+      const purchasedPlan = await getPlan(planId);
+      await recordPayment({
+        companyId: session.companyId,
+        subscriptionId: subscription.id,
+        paystackReference: reference,
+        paystackTransactionId: null,
+        amount: purchasedPlan?.amount ?? 0,
+        currency: purchasedPlan?.currency ?? "NGN",
+        status: "success",
+        paidAt: new Date().toISOString(),
+        metadata: result.metadata,
+      });
+
+      if (!wasAlreadyActive) {
         await trackLifecycleEvent(session.companyId, "subscription_activated", session.userId, { plan_id: planId });
-      }
-      if (publishJobId) {
-        await setJobStatus(session.companyId, publishJobId, "published");
-        redirect(`/dashboard/jobs/${publishJobId}?justPaid=1`);
-      }
-    } else {
-      const sku = result.metadata.sku as string | undefined;
-      const addon = sku ? await getAddonProductBySku(sku) : null;
-      if (addon) {
-        await fulfillAddonPurchase(session.companyId, addon, reference);
-        const subscription = await getSubscription(session.companyId);
-        await recordPayment({
-          companyId: session.companyId,
-          subscriptionId: subscription?.id ?? null,
-          paystackReference: reference,
-          paystackTransactionId: null,
-          amount: result.amount,
-          currency: result.currency,
-          status: "success",
-          paidAt: new Date().toISOString(),
-          metadata: result.metadata,
-        });
+        const ownerEmail = await getCompanyOwnerEmail(session.companyId);
+        if (ownerEmail && purchasedPlan) {
+          const validTill = new Date(subscription.period_end).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+          await sendEmail({
+            companyId: session.companyId,
+            type: "subscription_activated",
+            to: ownerEmail,
+            subject: "Your RecruitCandidates subscription is active",
+            body: `Your subscription has been activated on the ${purchasedPlan.name} plan, valid till ${validTill}. You now have full access to RecruitCandidates — thanks for subscribing!`,
+          });
+        }
       }
     }
 
-    redirect("/dashboard/billing?onboarding=1");
+    if (publishJobId) {
+      await setJobStatus(session.companyId, publishJobId, "published");
+      redirect(`/dashboard/jobs/${publishJobId}?justPaid=1`);
+    }
+  } else {
+    const sku = result.metadata.sku as string | undefined;
+    const addon = sku ? await getAddonProductBySku(sku) : null;
+    if (addon) {
+      await fulfillAddonPurchase(session.companyId, addon, reference);
+      const subscription = await getSubscription(session.companyId);
+      await recordPayment({
+        companyId: session.companyId,
+        subscriptionId: subscription?.id ?? null,
+        paystackReference: reference,
+        paystackTransactionId: null,
+        amount: Math.round(result.amount / 100),
+        currency: result.currency,
+        status: "success",
+        paidAt: new Date().toISOString(),
+        metadata: result.metadata,
+      });
+    }
   }
 
-  const publishJobId = typeof result.metadata.publish_job_id === "string" ? result.metadata.publish_job_id : null;
-  if (publishJobId) {
-    redirect(`/dashboard/jobs/${publishJobId}?justPaid=1`);
-  }
-
-  return (
-    <div className="mx-auto flex max-w-md flex-col items-center gap-3 py-16 text-center">
-      <CheckCircle2 className="size-10 text-success" />
-      <h1 className="text-xl font-semibold text-foreground">Payment received</h1>
-      <p className="text-sm text-foreground-muted">
-        We&apos;re confirming your payment with Paystack — this usually takes a few seconds. Your plan will update automatically once confirmed.
-      </p>
-      <Button href="/dashboard/billing" className="mt-2">Back to billing</Button>
-    </div>
-  );
+  redirect("/dashboard/billing?onboarding=1");
 }

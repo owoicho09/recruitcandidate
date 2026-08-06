@@ -44,10 +44,21 @@ export function PostPaymentBanner({ jobId, jobSlug, companySlug, published }: { 
   }
 
   if (!published) {
+    const gaveUp = pollCount >= MAX_POLLS;
     return (
       <Card className="flex items-center gap-3 border-accent/30 bg-accent-soft p-5">
-        <div className="size-4 shrink-0 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-        <p className="text-sm text-accent">Confirming your payment and publishing this role — this only takes a moment.</p>
+        {gaveUp ? (
+          <>
+            <PartyPopper className="size-4 shrink-0 text-accent" />
+            <p className="flex-1 text-sm text-accent">Your payment went through — this page is just slow to catch up. Refresh to see your role live.</p>
+            <Button size="sm" variant="secondary" onClick={() => router.refresh()}>Refresh</Button>
+          </>
+        ) : (
+          <>
+            <div className="size-4 shrink-0 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+            <p className="text-sm text-accent">Confirming your payment and publishing this role — this only takes a moment.</p>
+          </>
+        )}
       </Card>
     );
   }

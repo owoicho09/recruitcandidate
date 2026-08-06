@@ -531,6 +531,7 @@ export interface EmailLog {
     | "high_match_candidate"
     | "usage_threshold"
     | "payment_failed"
+    | "subscription_activated"
     | "subscription_canceled"
     | "card_expiring"
     | "password_reset"

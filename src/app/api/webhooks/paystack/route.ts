@@ -12,6 +12,7 @@ import {
   setSubscriptionStatus,
   getCompanyOwnerEmail,
   getSubscription,
+  getPlan,
   listCompanyAddons,
   listAddonProducts,
   getAddonProductBySku,
@@ -27,10 +28,14 @@ import { env } from "@/lib/env";
 /**
  * Spec Part K §23 "Webhook Security": read the raw body, validate the
  * x-paystack-signature header via HMAC SHA-512, reject invalid signatures,
- * process idempotently by event hash, and return quickly. This is the
- * authoritative subscription/add-on event source in production — the
- * demo-mode checkout callback performs the same activation inline since no
- * real Paystack instance can reach this route from a local/demo deployment.
+ * process idempotently by event hash, and return quickly. The billing
+ * callback page (/dashboard/billing/callback) now also activates
+ * subscriptions/add-ons directly off Paystack's verify response the moment
+ * the user returns from checkout, so this route is no longer the only path —
+ * it's the backstop that still owns renewals (subscription.create fires with
+ * no browser present) and covers any case where the user never makes it back
+ * to the callback page. activateSubscription/recordPayment both upsert, so
+ * both paths landing for the same event is harmless.
  */
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -151,7 +156,21 @@ async function handleSubscriptionCharge(event: PaystackWebhookEvent, companyId: 
     authorizationCode,
   );
 
-  if (!wasAlreadyActive) await trackLifecycleEvent(companyId, "subscription_activated", null, { plan_id: planId });
+  if (!wasAlreadyActive) {
+    await trackLifecycleEvent(companyId, "subscription_activated", null, { plan_id: planId });
+    const ownerEmail = await getCompanyOwnerEmail(companyId);
+    if (ownerEmail) {
+      const purchasedPlan = await getPlan(planId);
+      const validTill = new Date(subscription.period_end).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+      await sendEmail({
+        companyId,
+        type: "subscription_activated",
+        to: ownerEmail,
+        subject: "Your RecruitCandidates subscription is active",
+        body: `Your subscription has been activated${purchasedPlan ? ` on the ${purchasedPlan.name} plan` : ""}, valid till ${validTill}. You now have full access to RecruitCandidates — thanks for subscribing!`,
+      });
+    }
+  }
 
   if (event.data.reference) {
     await recordPayment({
