@@ -86,6 +86,25 @@ const SEQUENCES: Partial<Record<LifecycleSegment, SequenceItem[]>> = {
   ],
 };
 
+const EMAIL_TYPE_LABELS: Record<string, string> = {
+  setup_reminder: "Setup reminder",
+  create_job_reminder: "Create-job reminder",
+  draft_reminder_1: "Draft reminder (1 of 3)",
+  draft_reminder_2: "Draft reminder (2 of 3)",
+  draft_reminder_3: "Draft reminder (3 of 3)",
+  publish_reminder_1: "Publish reminder (1 of 2)",
+  publish_reminder_2: "Publish reminder (2 of 2)",
+  share_reminder_1: "Share reminder (1 of 2)",
+  share_reminder_2: "Share reminder (2 of 2)",
+  limit_reached_1: "Limit-reached notice (1 of 2)",
+  limit_reached_2: "Limit-reached notice (2 of 2)",
+};
+
+/** Human-readable label for a lifecycle_emails.email_type value, for admin UI display. Falls back to the raw key for any type not in the map. */
+export function getEmailTypeLabel(emailType: string): string {
+  return EMAIL_TYPE_LABELS[emailType] ?? emailType;
+}
+
 function draftReminderBody(ctx: SequenceContext): string {
   return `Your role is still saved in RecruitCandidates. Choose a plan to publish it and start receiving applications through your company's recruitment page.\n\nPublish your role: ${ctx.jobUrl ?? ctx.billingUrl}`;
 }
