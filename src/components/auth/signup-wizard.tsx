@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signupSchema, type SignupInput } from "@/lib/validation/auth";
+import { trackXSignupConversion } from "@/lib/analytics/x-pixel";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, Input, PasswordInput } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ export function SignupWizard() {
       setServerError(data.error ?? "Something went wrong.");
       return;
     }
+    trackXSignupConversion();
     router.push("/dashboard?onboarding=1");
   }
 
