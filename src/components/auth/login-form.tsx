@@ -5,19 +5,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Sparkles } from "lucide-react";
 import { loginSchema, type LoginInput } from "@/lib/validation/auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, Input, PasswordInput } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-
-const DEMO_ROLES = [
-  { role: "owner", label: "Owner — Amara" },
-  { role: "admin", label: "Admin — David" },
-  { role: "recruiter", label: "Recruiter — Priya" },
-  { role: "hiring_manager", label: "Hiring Manager — James" },
-  { role: "reviewer", label: "Reviewer — Grace" },
-];
 
 export function LoginForm() {
   const router = useRouter();
@@ -63,26 +54,6 @@ export function LoginForm() {
             </div>
             <Button type="submit" loading={isSubmitting}>Log in</Button>
           </form>
-        </CardContent>
-      </Card>
-
-      <div className="relative">
-        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
-        <div className="relative flex justify-center text-xs"><span className="bg-surface px-2 text-foreground-muted">or try the demo</span></div>
-      </div>
-
-      <Card>
-        <CardContent className="flex flex-col gap-2">
-          <p className="flex items-center gap-1.5 text-xs font-medium text-foreground-muted">
-            <Sparkles className="size-3.5 text-accent" /> Sign in instantly as a seeded demo account
-          </p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {DEMO_ROLES.map((r) => (
-              <Button key={r.role} href={`/api/auth/demo-login?role=${r.role}`} variant="secondary" size="sm">
-                {r.label}
-              </Button>
-            ))}
-          </div>
         </CardContent>
       </Card>
 
