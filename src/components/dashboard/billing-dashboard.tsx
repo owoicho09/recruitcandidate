@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -63,31 +63,36 @@ export function BillingDashboard({
   const [addonDialog, setAddonDialog] = React.useState<AddonProduct["kind"] | null>(null);
   const [annual, setAnnual] = React.useState(plan?.interval === "annual");
   const [busy, setBusy] = React.useState(false);
+  // The plan being checked out — its row shows a spinner until the browser has left for Paystack.
+  const [pendingPlanId, setPendingPlanId] = React.useState<string | null>(null);
+  const [pendingSku, setPendingSku] = React.useState<string | null>(null);
 
   async function checkout(planId: string) {
-    setBusy(true);
-    const res = await fetch("/api/billing/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId, publishJobId }) });
-    const data = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (res.ok) {
+    setPendingPlanId(planId);
+    const res = await fetch("/api/billing/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planId, publishJobId }) }).catch(() => null);
+    const data = res ? await res.json().catch(() => ({})) : {};
+    if (res?.ok) {
       // Full page navigation to a Paystack-hosted (or demo callback) URL, triggered by a user click.
+      // pendingPlanId stays set so the spinner keeps showing while Paystack loads.
       // eslint-disable-next-line react-hooks/immutability
       window.location.href = data.redirectUrl;
     } else {
-      toast.error("Couldn't start checkout", data.error ?? `Something went wrong (HTTP ${res.status}). Please try again or contact support.`);
+      setPendingPlanId(null);
+      toast.error("Couldn't start checkout", data.error ?? (res ? `Something went wrong (HTTP ${res.status}). Please try again or contact support.` : "Check your internet connection and try again."));
     }
   }
 
   async function buyAddon(sku: string) {
-    setBusy(true);
-    const res = await fetch("/api/billing/addons/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sku }) });
-    const data = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (res.ok) {
+    setPendingSku(sku);
+    const res = await fetch("/api/billing/addons/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sku }) }).catch(() => null);
+    const data = res ? await res.json().catch(() => ({})) : {};
+    if (res?.ok) {
+      // pendingSku stays set so the spinner keeps showing while Paystack loads.
       // eslint-disable-next-line react-hooks/immutability
       window.location.href = data.redirectUrl;
     } else {
-      toast.error("Couldn't start checkout", data.error ?? `Something went wrong (HTTP ${res.status}). Please try again or contact support.`);
+      setPendingSku(null);
+      toast.error("Couldn't start checkout", data.error ?? (res ? `Something went wrong (HTTP ${res.status}). Please try again or contact support.` : "Check your internet connection and try again."));
     }
   }
 
@@ -242,21 +247,34 @@ export function BillingDashboard({
         <DialogContent>
           <DialogHeader><DialogTitle>{isCurrent ? "Change plan" : "Choose a plan"}</DialogTitle></DialogHeader>
           <div className="mb-3 inline-flex items-center gap-1 self-start rounded-full bg-surface-muted p-1">
-            <button onClick={() => setAnnual(false)} className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors", !annual ? "bg-surface text-foreground shadow-sm" : "text-foreground-muted")}>Monthly</button>
-            <button onClick={() => setAnnual(true)} className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors", annual ? "bg-surface text-foreground shadow-sm" : "text-foreground-muted")}>Annual — 2 months free</button>
+            <button disabled={!!pendingPlanId} onClick={() => setAnnual(false)} className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed", !annual ? "bg-surface text-foreground shadow-sm" : "text-foreground-muted")}>Monthly</button>
+            <button disabled={!!pendingPlanId} onClick={() => setAnnual(true)} className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed", annual ? "bg-surface text-foreground shadow-sm" : "text-foreground-muted")}>Annual — 2 months free</button>
           </div>
           <div className="flex flex-col gap-2">
             {tierPlans.map((p) => (
               <button
                 key={p.id}
-                disabled={busy || (isCurrent && subscription?.status !== "attention" && p.id === plan?.id)}
+                disabled={busy || !!pendingPlanId || (isCurrent && subscription?.status !== "attention" && p.id === plan?.id)}
                 onClick={() => checkout(p.id)}
-                className={cn("flex items-center justify-between rounded-lg border p-3 text-left disabled:opacity-50", p.id === plan?.id ? "border-accent bg-accent-soft" : "border-border-strong hover:border-accent/50")}
+                aria-busy={pendingPlanId === p.id}
+                className={cn(
+                  "flex items-center justify-between rounded-lg border p-3 text-left transition-opacity disabled:cursor-not-allowed",
+                  pendingPlanId === p.id ? "border-accent bg-accent-soft" : "disabled:opacity-50",
+                  pendingPlanId !== p.id && (p.id === plan?.id ? "border-accent bg-accent-soft" : "border-border-strong hover:border-accent/50"),
+                )}
               >
-                <span className="text-sm font-medium text-foreground">{p.name}</span>
-                <span className="text-sm text-foreground-muted">{formatCurrency(p.amount, p.currency)}/{p.interval === "annual" ? "yr" : "mo"}{p.id === plan?.id && " · current"}</span>
+                <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  {pendingPlanId === p.id && <Loader2 className="size-4 animate-spin text-accent" aria-hidden />}
+                  {p.name}
+                </span>
+                <span className="text-sm text-foreground-muted">
+                  {pendingPlanId === p.id ? "Redirecting to Paystack…" : <>{formatCurrency(p.amount, p.currency)}/{p.interval === "annual" ? "yr" : "mo"}{p.id === plan?.id && " · current"}</>}
+                </span>
               </button>
             ))}
+            {pendingPlanId && (
+              <p role="status" className="text-xs text-foreground-muted">Setting up secure checkout — this can take a few seconds.</p>
+            )}
             <p className="mt-1 text-xs text-foreground-muted">Need more than Scale? <Link href="/contact" className="text-accent underline underline-offset-2">Contact sales</Link> about Enterprise.</p>
           </div>
         </DialogContent>
@@ -269,14 +287,26 @@ export function BillingDashboard({
             {addonProducts.filter((a) => a.kind === addonDialog).map((a) => (
               <button
                 key={a.sku}
-                disabled={busy}
+                disabled={busy || !!pendingSku}
                 onClick={() => buyAddon(a.sku)}
-                className="flex items-center justify-between rounded-lg border border-border-strong p-3 text-left hover:border-accent/50 disabled:opacity-50"
+                aria-busy={pendingSku === a.sku}
+                className={cn(
+                  "flex items-center justify-between rounded-lg border p-3 text-left transition-opacity disabled:cursor-not-allowed",
+                  pendingSku === a.sku ? "border-accent bg-accent-soft" : "border-border-strong hover:border-accent/50 disabled:opacity-50",
+                )}
               >
-                <span className="text-sm font-medium text-foreground">{a.name}</span>
-                <span className="text-sm text-foreground-muted">{formatCurrency(a.amount, a.currency)}{a.billing_type === "recurring" ? "/period" : ""}</span>
+                <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  {pendingSku === a.sku && <Loader2 className="size-4 animate-spin text-accent" aria-hidden />}
+                  {a.name}
+                </span>
+                <span className="text-sm text-foreground-muted">
+                  {pendingSku === a.sku ? "Redirecting to Paystack…" : <>{formatCurrency(a.amount, a.currency)}{a.billing_type === "recurring" ? "/period" : ""}</>}
+                </span>
               </button>
             ))}
+            {pendingSku && (
+              <p role="status" className="text-xs text-foreground-muted">Setting up secure checkout — this can take a few seconds.</p>
+            )}
           </div>
         </DialogContent>
       </Dialog>
