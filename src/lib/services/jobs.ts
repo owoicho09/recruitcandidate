@@ -116,14 +116,21 @@ export async function updateJob(companyId: string, jobId: string, patch: Partial
   return job;
 }
 
+/**
+ * Service-role write, scoped by companyId: callers authorize at the route
+ * layer (dashboard session + plan check, or the signed Paystack webhook after
+ * payment — which has no user session for RLS to scope against). Direct
+ * client-side publishes are blocked in the database (migration 018).
+ */
 export async function setJobStatus(companyId: string, jobId: string, status: Job["status"]): Promise<Job | null> {
   if (flags.hasSupabase) {
-    const { createServerSupabaseClient } = await import("@/lib/supabase/server");
-    const supabase = await createServerSupabaseClient();
-    const existing = await getJob(companyId, jobId);
+    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
+    const admin = createAdminSupabaseClient();
+    const { data: existing } = await admin.from("jobs").select("published_at").eq("company_id", companyId).eq("id", jobId).maybeSingle();
+    if (!existing) return null;
     const patch: Partial<Job> = { status, updated_at: new Date().toISOString() };
-    if (status === "published" && existing && !existing.published_at) patch.published_at = patch.updated_at;
-    const { data } = await supabase.from("jobs").update(patch).eq("company_id", companyId).eq("id", jobId).select("*").maybeSingle();
+    if (status === "published" && !existing.published_at) patch.published_at = patch.updated_at;
+    const { data } = await admin.from("jobs").update(patch).eq("company_id", companyId).eq("id", jobId).select("*").maybeSingle();
     return (data as Job | null) ?? null;
   }
 
@@ -151,9 +158,9 @@ export async function duplicateJob(companyId: string, jobId: string, createdBy: 
 
 export async function countActiveJobs(companyId: string): Promise<number> {
   if (flags.hasSupabase) {
-    const { createServerSupabaseClient } = await import("@/lib/supabase/server");
-    const supabase = await createServerSupabaseClient();
-    const { count } = await supabase
+    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
+    const admin = createAdminSupabaseClient();
+    const { count } = await admin
       .from("jobs")
       .select("id", { count: "exact", head: true })
       .eq("company_id", companyId)

@@ -16,5 +16,10 @@ export default async function AssessmentTokenPage({ params }: PageProps<"/assess
     return <div className="mx-auto max-w-lg px-4 py-16"><ErrorState title="Link expired" description="This assessment invitation has expired. Contact the employer for a new link." /></div>;
   }
 
-  return <AssessmentRunner token={token} assessment={detail.assessment} attempt={detail.attempt} job={detail.job} company={detail.company} />;
+  // AssessmentRunner is a client component — everything passed to it ships to
+  // the candidate's browser, so the answer key must be stripped here.
+  const assessment = { ...detail.assessment, questions: detail.assessment.questions.map((q) => ({ ...q, correct_answer: null })) };
+  const attempt = { ...detail.attempt, token_hash: "" };
+
+  return <AssessmentRunner token={token} assessment={assessment} attempt={attempt} job={detail.job} company={detail.company} />;
 }

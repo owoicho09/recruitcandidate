@@ -6,8 +6,9 @@ export async function POST(request: Request, { params }: RouteContext<"/api/asse
   const { token } = await params;
   const body = await request.json().catch(() => ({}));
 
-  const attempt = await submitAttempt(token, body.answers ?? {});
-  if (!attempt) return NextResponse.json({ error: "Invalid or expired link" }, { status: 404 });
+  const answers = body.answers && typeof body.answers === "object" && !Array.isArray(body.answers) ? body.answers : {};
+  const attempt = await submitAttempt(token, answers);
+  if (!attempt) return NextResponse.json({ error: "This assessment link is invalid, has expired, or was already submitted." }, { status: 404 });
 
   const detail = await getAttemptByToken(token);
   if (detail) {
@@ -24,5 +25,5 @@ export async function POST(request: Request, { params }: RouteContext<"/api/asse
     });
   }
 
-  return NextResponse.json({ attempt });
+  return NextResponse.json({ attempt: { id: attempt.id, status: attempt.status, completed_at: attempt.completed_at } });
 }

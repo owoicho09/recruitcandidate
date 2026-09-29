@@ -116,10 +116,16 @@ const enterpriseFeatures = [
   "Higher live AI interview usage",
 ];
 
+/** Same env vars scripts/sync-plan-codes.mjs reads, so the in-memory store can run checkout against Paystack test mode. */
+function planCodeFromEnv(slug: Plan["slug"], interval: Plan["interval"]): string {
+  if (typeof process === "undefined") return "";
+  return process.env[`PAYSTACK_${slug.toUpperCase()}_${interval.toUpperCase()}_PLAN_CODE`] ?? "";
+}
+
 function planPair(idPrefix: string, name: string, slug: Plan["slug"], monthlyAmount: number, limits: Plan["limits"], features: string[]): Plan[] {
   return [
-    { id: `${idPrefix}-monthly`, name, slug, currency: "NGN", amount: monthlyAmount, interval: "monthly", paystack_plan_code: "", limits, features, active: true, created_at: daysAgo(365) },
-    { id: `${idPrefix}-annual`, name, slug, currency: "NGN", amount: monthlyAmount * 10, interval: "annual", paystack_plan_code: "", limits, features, active: true, created_at: daysAgo(365) },
+    { id: `${idPrefix}-monthly`, name, slug, currency: "NGN", amount: monthlyAmount, interval: "monthly", paystack_plan_code: planCodeFromEnv(slug, "monthly"), limits, features, active: true, created_at: daysAgo(365) },
+    { id: `${idPrefix}-annual`, name, slug, currency: "NGN", amount: monthlyAmount * 10, interval: "annual", paystack_plan_code: planCodeFromEnv(slug, "annual"), limits, features, active: true, created_at: daysAgo(365) },
   ];
 }
 

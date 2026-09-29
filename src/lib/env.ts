@@ -76,6 +76,8 @@ const schema = z.object({
   PAYMENT_GRACE_PERIOD_DAYS: z.coerce.number().default(3),
 
   PLATFORM_ADMIN_EMAIL: z.string().default(""),
+  // Required outside demo mode — platform-admin login is refused until both this and PLATFORM_ADMIN_EMAIL are set.
+  PLATFORM_ADMIN_PASSWORD: z.string().default(""),
   PLATFORM_ADMIN_SESSION_SECRET: z.string().default("dev-platform-admin-secret-change-me"),
   RATE_LIMIT_SECRET: z.string().default(""),
   AUTH_COOKIE_NAME: z.string().default("recruitcandidates_session"),

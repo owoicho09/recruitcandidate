@@ -31,8 +31,8 @@ const ADDON_KIND_LABEL: Record<AddonProduct["kind"], string> = {
 };
 
 export function BillingDashboard({
-  subscription,
-  plan,
+  subscription: subscriptionProp,
+  plan: planProp,
   plans,
   payments,
   addonProducts,
@@ -52,6 +52,12 @@ export function BillingDashboard({
   publishJobId?: string | null;
 }) {
   const toast = useToast();
+  // A "pending" row only means a checkout was started — it isn't a plan the company has.
+  const subscription = subscriptionProp?.status === "pending" ? null : subscriptionProp;
+  const plan = subscription ? planProp : null;
+  const isCurrent = subscription?.status === "active" || subscription?.status === "non_renewing" || subscription?.status === "attention";
+  // Once period_end passes, the server-side lapse sweep moves non_renewing to canceled, so status alone is enough here.
+  const canResume = subscription?.status === "non_renewing";
   const [planDialogOpen, setPlanDialogOpen] = React.useState(Boolean(publishJobId) && !subscription);
   const [cancelOpen, setCancelOpen] = React.useState(false);
   const [addonDialog, setAddonDialog] = React.useState<AddonProduct["kind"] | null>(null);
@@ -68,7 +74,7 @@ export function BillingDashboard({
       // eslint-disable-next-line react-hooks/immutability
       window.location.href = data.redirectUrl;
     } else {
-      toast.error("Couldn't start checkout", data.error);
+      toast.error("Couldn't start checkout", data.error ?? `Something went wrong (HTTP ${res.status}). Please try again or contact support.`);
     }
   }
 
@@ -81,26 +87,36 @@ export function BillingDashboard({
       // eslint-disable-next-line react-hooks/immutability
       window.location.href = data.redirectUrl;
     } else {
-      toast.error("Couldn't start checkout", data.error);
+      toast.error("Couldn't start checkout", data.error ?? `Something went wrong (HTTP ${res.status}). Please try again or contact support.`);
     }
   }
 
   async function cancel() {
     setBusy(true);
     const res = await fetch("/api/billing/cancel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason: "Owner requested cancellation" }) });
+    const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (res.ok) {
       toast.success("Subscription set to cancel at period end");
       setCancelOpen(false);
       window.location.reload();
+    } else {
+      toast.error("Couldn't cancel subscription", data.error ?? `Something went wrong (HTTP ${res.status}). Please try again or contact support.`);
     }
   }
 
   async function reactivate() {
     setBusy(true);
     const res = await fetch("/api/billing/reactivate", { method: "POST" });
+    const data = await res.json().catch(() => ({}));
     setBusy(false);
-    if (res.ok) { toast.success("Subscription reactivated"); window.location.reload(); }
+    if (res.ok) {
+      toast.success("Subscription reactivated");
+      window.location.reload();
+    } else {
+      toast.error("Couldn't reactivate", data.error ?? `Something went wrong (HTTP ${res.status}).`);
+      if (data.requiresPlan) setPlanDialogOpen(true);
+    }
   }
 
   const tierPlans = plans.filter((p) => p.slug !== "enterprise" && p.interval === (annual ? "annual" : "monthly"));
@@ -121,17 +137,17 @@ export function BillingDashboard({
           {subscription && plan && (
             <div className="text-right text-sm text-foreground-muted">
               <p>{formatCurrency(plan.amount, plan.currency)}/{plan.interval === "annual" ? "yr" : "mo"}</p>
-              <p>{subscription.next_payment_date && (subscription.cancel_at_period_end ? "Ends" : "Next payment")} {subscription.next_payment_date && formatDate(subscription.next_payment_date)}</p>
+              <p>{isCurrent ? `${subscription.cancel_at_period_end || subscription.status === "non_renewing" ? "Ends" : "Next payment"} ${formatDate(subscription.next_payment_date ?? subscription.period_end)}` : `Ended ${formatDate(subscription.period_end)}`}</p>
             </div>
           )}
           {canManage && (
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => setPlanDialogOpen(true)}>{subscription ? "Change plan" : "Choose a plan"}</Button>
-              {subscription && (subscription.cancel_at_period_end || subscription.status === "canceled" ? (
+              <Button size="sm" onClick={() => setPlanDialogOpen(true)}>{isCurrent ? "Change plan" : subscription ? "Renew plan" : "Choose a plan"}</Button>
+              {canResume ? (
                 <Button size="sm" variant="secondary" loading={busy} onClick={reactivate}>Reactivate</Button>
               ) : (
-                <Button size="sm" variant="danger" onClick={() => setCancelOpen(true)}>Cancel</Button>
-              ))}
+                (subscription?.status === "active" || subscription?.status === "attention") && <Button size="sm" variant="danger" onClick={() => setCancelOpen(true)}>Cancel</Button>
+              )}
             </div>
           )}
         </div>
@@ -224,7 +240,7 @@ export function BillingDashboard({
 
       <Dialog open={planDialogOpen} onOpenChange={setPlanDialogOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{subscription ? "Change plan" : "Choose a plan"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{isCurrent ? "Change plan" : "Choose a plan"}</DialogTitle></DialogHeader>
           <div className="mb-3 inline-flex items-center gap-1 self-start rounded-full bg-surface-muted p-1">
             <button onClick={() => setAnnual(false)} className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors", !annual ? "bg-surface text-foreground shadow-sm" : "text-foreground-muted")}>Monthly</button>
             <button onClick={() => setAnnual(true)} className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors", annual ? "bg-surface text-foreground shadow-sm" : "text-foreground-muted")}>Annual — 2 months free</button>
@@ -233,7 +249,7 @@ export function BillingDashboard({
             {tierPlans.map((p) => (
               <button
                 key={p.id}
-                disabled={busy || p.id === plan?.id}
+                disabled={busy || (isCurrent && subscription?.status !== "attention" && p.id === plan?.id)}
                 onClick={() => checkout(p.id)}
                 className={cn("flex items-center justify-between rounded-lg border p-3 text-left disabled:opacity-50", p.id === plan?.id ? "border-accent bg-accent-soft" : "border-border-strong hover:border-accent/50")}
               >
@@ -269,7 +285,7 @@ export function BillingDashboard({
         <DialogContent>
           <DialogHeader><DialogTitle>Cancel subscription</DialogTitle></DialogHeader>
           <p className="text-sm text-foreground-muted">
-            Your workspace stays fully active until {subscription && formatDate(subscription.period_end)}, then becomes read-only. Career page jobs will be unpublished after the grace period. You can reactivate any time before then.
+            You won&apos;t be charged again. Your workspace stays fully active until {subscription && formatDate(subscription.period_end)}; after that, publishing jobs and receiving new applications pause until you subscribe again. You can reactivate any time before then.
           </p>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setCancelOpen(false)}>Keep subscription</Button>

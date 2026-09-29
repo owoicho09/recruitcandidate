@@ -27,6 +27,7 @@ export function AssessmentRunner({
   const [answers, setAnswers] = React.useState<Record<string, string | string[]>>(initialAttempt.answers ?? {});
   const [secondsLeft, setSecondsLeft] = React.useState(assessment.duration_minutes * 60);
   const [submitting, setSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
 
   const questions = assessment.questions;
   const current = questions[index];
@@ -43,15 +44,31 @@ export function AssessmentRunner({
   }, [secondsLeft, phase]);
 
   async function begin() {
-    await fetch(`/api/assessments/${token}/start`, { method: "POST" });
+    const res = await fetch(`/api/assessments/${token}/start`, { method: "POST" }).catch(() => null);
+    if (!res?.ok) {
+      setSubmitError(res ? "This assessment link has expired or is no longer valid." : "You appear to be offline. Check your connection and try again.");
+      return;
+    }
     setPhase("running");
   }
 
   async function submit() {
     setSubmitting(true);
-    await fetch(`/api/assessments/${token}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }) });
-    setSubmitting(false);
-    setPhase("done");
+    setSubmitError(null);
+    try {
+      const res = await fetch(`/api/assessments/${token}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers }) });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setSubmitError(data.error ?? "We couldn't submit your answers. Please try again.");
+        return;
+      }
+      setPhase("done");
+    } catch {
+      // Answers stay in state, so the candidate can retry once they're back online.
+      setSubmitError("You appear to be offline — your answers are kept. Check your connection and press Submit again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   if (phase === "done") {
@@ -79,6 +96,7 @@ export function AssessmentRunner({
               <Clock className="size-4" /> {assessment.duration_minutes} minutes · {questions.length} questions · one attempt
             </div>
             <Button size="lg" onClick={begin}>Start assessment</Button>
+            {submitError && <p role="alert" className="text-sm text-danger">{submitError}</p>}
           </CardContent>
         </Card>
       </div>
@@ -122,7 +140,10 @@ export function AssessmentRunner({
         {index < questions.length - 1 ? (
           <Button onClick={() => setIndex((i) => i + 1)}>Next</Button>
         ) : (
-          <Button loading={submitting} onClick={submit}>Submit assessment</Button>
+          <div className="flex flex-col items-end gap-1">
+            <Button loading={submitting} onClick={submit}>Submit assessment</Button>
+            {submitError && <p role="alert" className="text-sm text-danger">{submitError}</p>}
+          </div>
         )}
       </div>
     </div>

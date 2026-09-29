@@ -25,6 +25,7 @@ export function VideoInterviewRunner({
 }) {
   const [phase, setPhase] = React.useState<Phase>(initialAttempt.status === "completed" ? "done" : "consent");
   const [consented, setConsented] = React.useState(false);
+  const [uploadError, setUploadError] = React.useState<string | null>(null);
   const [questionIndex, setQuestionIndex] = React.useState(0);
   const [prepLeft, setPrepLeft] = React.useState(0);
   const [recordSeconds, setRecordSeconds] = React.useState(0);
@@ -119,7 +120,15 @@ export function VideoInterviewRunner({
     form.set("questionId", question.id);
     form.set("durationSeconds", String(durationUsed || question.response_seconds));
     if (lastBlobRef.current) form.set("video", lastBlobRef.current, `${question.id}.webm`);
-    await fetch(`/api/video-interviews/${token}/respond`, { method: "POST", body: form });
+    setUploadError(null);
+    const res = await fetch(`/api/video-interviews/${token}/respond`, { method: "POST", body: form }).catch(() => null);
+    if (!res?.ok) {
+      // Keep the recording and go back to review so the candidate can retry the upload instead of silently losing the answer.
+      const data = res ? await res.json().catch(() => ({})) : {};
+      setUploadError(data.error ?? "Your response didn't upload — check your connection and press continue again.");
+      setPhase("review");
+      return;
+    }
 
     if (questionIndex < interview.questions.length - 1) {
       setQuestionIndex((i) => i + 1);
@@ -127,7 +136,12 @@ export function VideoInterviewRunner({
       lastBlobRef.current = null;
       setPhase("instructions");
     } else {
-      await fetch(`/api/video-interviews/${token}/complete`, { method: "POST" });
+      const done = await fetch(`/api/video-interviews/${token}/complete`, { method: "POST" }).catch(() => null);
+      if (!done?.ok) {
+        setUploadError("We couldn't finalize your interview — check your connection and press continue again.");
+        setPhase("review");
+        return;
+      }
       streamRef.current?.getTracks().forEach((t) => t.stop());
       setPhase("done");
     }
@@ -222,6 +236,7 @@ export function VideoInterviewRunner({
             )}
             <Button onClick={confirmAndContinue}><Play className="size-4" /> Use this response</Button>
           </div>
+          {uploadError && <p role="alert" className="text-center text-sm text-danger">{uploadError}</p>}
         </div>
       )}
 

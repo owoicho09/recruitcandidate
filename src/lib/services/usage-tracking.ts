@@ -3,7 +3,7 @@ import { mockStore } from "@/lib/data/store";
 import { id } from "@/lib/data/ids";
 import { countActiveJobs } from "@/lib/services/jobs";
 import { countActiveTeamMembers } from "@/lib/services/team";
-import { getPlanForCompany, getSubscription, getEffectiveLimits, listCompanyAddons } from "@/lib/services/plan-access";
+import { getPlanForCompany, getSubscription, getEffectiveLimits, listCompanyAddons, isEntitled } from "@/lib/services/plan-access";
 import type { UsagePeriod } from "@/types/database";
 
 /**
@@ -49,7 +49,7 @@ async function getPurchasedApplicationCredits(companyId: string): Promise<number
 export async function checkUsage(companyId: string, metric: UsageMetric): Promise<UsageCheck> {
   const [subscription, plan] = await Promise.all([getSubscription(companyId), getPlanForCompany(companyId)]);
   if (!subscription || !plan) return { allowed: false, used: 0, limit: 0, reason: "No active subscription" };
-  if (subscription.status !== "active" && subscription.status !== "non_renewing") {
+  if (!isEntitled(subscription)) {
     return { allowed: false, used: 0, limit: 0, reason: "Subscription is not active" };
   }
 

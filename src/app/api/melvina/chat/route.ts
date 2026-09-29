@@ -9,13 +9,17 @@ import { createMelvinaStream, extractComplaint } from "@/lib/ai/melvina";
 import { sendPlatformEmail } from "@/lib/email/resend";
 import { logMelvinaExchange } from "@/lib/services/melvina-log";
 import { env } from "@/lib/env";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const schema = z.object({
-  messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1) })).min(1).max(40),
+  // Bounded: every message is resent to the model on each turn, so unbounded input is unbounded AI spend.
+  messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(4000) })).min(1).max(40),
 });
 
 export async function POST(request: Request) {
   const session = await requireSession();
+  const allowed = await checkRateLimit(`melvina:${session.userId}`, 30, 10 * 60);
+  if (!allowed) return NextResponse.json({ error: "You're sending messages very quickly — please wait a few minutes and try again." }, { status: 429 });
   const body = await request.json().catch(() => null);
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });

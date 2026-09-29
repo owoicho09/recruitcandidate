@@ -5,6 +5,7 @@ import { id } from "@/lib/data/ids";
 import { hashToken } from "@/lib/utils/token";
 import { setDemoSession } from "@/lib/auth/session";
 import { flags } from "@/lib/env";
+import { findAuthUserIdByEmail } from "@/lib/auth/find-user";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -48,8 +49,7 @@ export async function POST(request: Request) {
     }
     const { data: company } = await admin.from("companies").select("id, slug").eq("id", invitation.company_id).single();
 
-    const { data: existingUsers } = await admin.auth.admin.listUsers();
-    let userId = existingUsers?.users.find((u) => u.email?.toLowerCase() === invitation.email.toLowerCase())?.id;
+    let userId = await findAuthUserIdByEmail(admin, invitation.email);
 
     if (!userId) {
       const { data: created, error: createUserError } = await admin.auth.admin.createUser({ email: invitation.email, password: parsed.data.password, email_confirm: true });

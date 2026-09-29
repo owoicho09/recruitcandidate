@@ -250,7 +250,7 @@ export async function submitApplication(companySlug: string, jobId: string, inpu
   if (flags.hasSupabase) return submitApplicationLive(companySlug, jobId, input);
 
   const company = mockStore.companies.find((c) => c.slug === companySlug);
-  const job = mockStore.jobs.find((j) => j.id === jobId && j.status === "published");
+  const job = mockStore.jobs.find((j) => j.id === jobId && j.company_id === company?.id && j.status === "published");
   if (!company || !job) return null;
 
   let candidate = mockStore.candidates.find((c) => c.company_id === company.id && c.email.toLowerCase() === input.email.toLowerCase());
@@ -315,10 +315,14 @@ async function submitApplicationLive(companySlug: string, jobId: string, input: 
   const admin = createAdminSupabaseClient();
 
   const { data: company } = await admin.from("companies").select("id, slug").eq("slug", companySlug).maybeSingle();
-  const { data: job } = await admin.from("jobs").select("*").eq("id", jobId).eq("status", "published").maybeSingle();
-  if (!company || !job) return null;
+  if (!company) return null;
+  // Scoped to the company in the URL — a job id from another company must not be applicable through this one's career page.
+  const { data: job } = await admin.from("jobs").select("*").eq("id", jobId).eq("company_id", company.id).eq("status", "published").maybeSingle();
+  if (!job) return null;
 
-  let { data: candidate } = await admin.from("candidates").select("*").eq("company_id", company.id).ilike("email", input.email).maybeSingle();
+  // ilike for case-insensitivity, with LIKE wildcards escaped so "a_b@x.com" can't match "axb@x.com".
+  const emailPattern = input.email.replace(/[\\%_]/g, (c) => `\\${c}`);
+  let { data: candidate } = await admin.from("candidates").select("*").eq("company_id", company.id).ilike("email", emailPattern).limit(1).maybeSingle();
   if (!candidate) {
     const { data: created, error } = await admin
       .from("candidates")
@@ -340,11 +344,8 @@ async function submitApplicationLive(companySlug: string, jobId: string, input: 
 
   const extracted = await extractCvText(input.cv_buffer, input.cv_filename);
   const cvPath = `${company.id}/${candidate!.id}/${Date.now()}-${sanitizeFilename(input.cv_filename)}`;
-  try {
-    await uploadPrivateFile(env.SUPABASE_CV_BUCKET, cvPath, input.cv_buffer, input.cv_content_type);
-  } catch (err) {
-    console.error("CV upload failed:", err);
-  }
+  // A failed upload fails the submission: an application whose CV can't be opened is worse than asking the candidate to retry.
+  await uploadPrivateFile(env.SUPABASE_CV_BUCKET, cvPath, input.cv_buffer, input.cv_content_type);
 
   const trackingToken = generateToken();
   const { data: application, error: applicationError } = await admin

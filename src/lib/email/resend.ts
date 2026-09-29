@@ -66,6 +66,8 @@ export async function sendEmail(input: SendEmailInput): Promise<EmailLog> {
   } else {
     resendId = `re_demo_${id().slice(0, 8)}`;
     status = input.scheduledFor ? "scheduled" : "delivered";
+    // No provider configured: print the email in development so its links (assessment, video, reset) are usable locally.
+    if (env.NODE_ENV === "development") console.info(`[email:not-sent] to=${input.to} subject=${JSON.stringify(input.subject)}\n${input.body}`);
   }
 
   const logFields = {

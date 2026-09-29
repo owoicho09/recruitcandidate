@@ -16,5 +16,9 @@ export default async function VideoInterviewTokenPage({ params }: PageProps<"/vi
     return <div className="mx-auto max-w-lg px-4 py-16"><ErrorState title="Link expired" description="This video interview invitation has expired. Contact the employer for a new link." /></div>;
   }
 
-  return <VideoInterviewRunner token={token} interview={detail.interview} attempt={detail.attempt} job={detail.job} company={detail.company} />;
+  // Client component — strip what the candidate shouldn't see (employer scoring criteria, token hash).
+  const interview = { ...detail.interview, questions: detail.interview.questions.map((q) => ({ ...q, scoring_criteria: [] })) };
+  const attempt = { ...detail.attempt, token_hash: "" };
+
+  return <VideoInterviewRunner token={token} interview={interview} attempt={attempt} job={detail.job} company={detail.company} />;
 }

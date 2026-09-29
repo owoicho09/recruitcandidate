@@ -10,6 +10,12 @@ import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { trackLifecycleEvent, recomputeLifecycleSegment } from "@/lib/services/lifecycle";
 
 const MAX_CV_BYTES = env.MAX_CV_FILE_MB * 1024 * 1024;
+/** Matches the application form's accept list; the content type is set from the extension, never trusted from the upload. */
+const CV_TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
 
 export async function POST(request: Request) {
   const allowed = await checkRateLimit(`applications:${getClientIp(request)}`, 15, 60 * 60);
@@ -32,6 +38,17 @@ export async function POST(request: Request) {
   if (cv.size > MAX_CV_BYTES) {
     return NextResponse.json({ error: `CV must be under ${env.MAX_CV_FILE_MB}MB` }, { status: 400 });
   }
+  const extension = cv.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  if (!extension || !CV_TYPES[extension]) {
+    return NextResponse.json({ error: "Upload your CV as a PDF or Word document (.pdf, .doc, .docx)." }, { status: 400 });
+  }
+
+  let answers: unknown = {};
+  try {
+    answers = answersRaw ? JSON.parse(String(answersRaw)) : {};
+  } catch {
+    return NextResponse.json({ error: "Invalid submission" }, { status: 400 });
+  }
 
   const parsed = applicationSchema.safeParse({
     firstName: form.get("firstName"),
@@ -44,7 +61,7 @@ export async function POST(request: Request) {
     coverNote: form.get("coverNote") || "",
     consent: form.get("consent") === "true",
     privacyAcknowledged: form.get("privacyAcknowledged") === "true",
-    answers: answersRaw ? JSON.parse(String(answersRaw)) : {},
+    answers,
   });
 
   if (!parsed.success) {
@@ -63,7 +80,9 @@ export async function POST(request: Request) {
 
   const input = parsed.data;
   const cvBuffer = Buffer.from(await cv.arrayBuffer());
-  const result = await submitApplication(companySlug, jobId, {
+  let result: Awaited<ReturnType<typeof submitApplication>>;
+  try {
+    result = await submitApplication(companySlug, jobId, {
     first_name: input.firstName,
     last_name: input.lastName,
     email: input.email,
@@ -74,9 +93,13 @@ export async function POST(request: Request) {
     cover_note: input.coverNote || undefined,
     cv_filename: cv.name,
     cv_buffer: cvBuffer,
-    cv_content_type: cv.type || "application/octet-stream",
+    cv_content_type: CV_TYPES[extension],
     application_answers: input.answers,
   });
+  } catch (err) {
+    console.error("[applications] submission failed", { companySlug, jobId, err });
+    return NextResponse.json({ error: "We couldn't submit your application just now. Please try again in a moment." }, { status: 500 });
+  }
 
   if (!result) return NextResponse.json({ error: "This role is no longer accepting applications." }, { status: 404 });
 

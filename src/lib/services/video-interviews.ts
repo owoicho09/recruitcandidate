@@ -143,6 +143,18 @@ export async function getVideoAttemptByToken(token: string) {
   return { attempt, interview, application, job, company, candidate };
 }
 
+/** Allowance for a candidate mid-interview as the deadline passes. */
+const RESPOND_GRACE_MS = 60 * 60 * 1000;
+
+function isExpired(attempt: Pick<VideoInterviewAttempt, "expires_at">, graceMs = 0): boolean {
+  return new Date(attempt.expires_at).getTime() + graceMs < Date.now();
+}
+
+/** Responses are accepted only on an open (not yet completed) invitation, before its deadline. */
+function canRespond(attempt: Pick<VideoInterviewAttempt, "status" | "expires_at">): boolean {
+  return attempt.status !== "completed" && attempt.status !== "expired" && !isExpired(attempt, RESPOND_GRACE_MS);
+}
+
 export async function startVideoAttempt(token: string) {
   const tokenHash = hashToken(token);
 
@@ -150,7 +162,7 @@ export async function startVideoAttempt(token: string) {
     const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
     const admin = createAdminSupabaseClient();
     const { data: attempt } = await admin.from("video_interview_attempts").select("*").eq("token_hash", tokenHash).maybeSingle();
-    if (!attempt) return null;
+    if (!attempt || isExpired(attempt)) return null;
     if (attempt.status === "pending") {
       const { data } = await admin.from("video_interview_attempts").update({ started_at: new Date().toISOString(), status: "in_progress" }).eq("id", attempt.id).select("*").single();
       return data as VideoInterviewAttempt;
@@ -159,7 +171,7 @@ export async function startVideoAttempt(token: string) {
   }
 
   const attempt = mockStore.videoInterviewAttempts.find((a) => a.token_hash === tokenHash);
-  if (!attempt) return null;
+  if (!attempt || isExpired(attempt)) return null;
   if (attempt.status === "pending") {
     attempt.started_at = new Date().toISOString();
     attempt.status = "in_progress";
@@ -182,23 +194,26 @@ export async function submitVideoResponse(token: string, questionId: string, dur
     const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
     const admin = createAdminSupabaseClient();
     const { data: attempt } = await admin.from("video_interview_attempts").select("*").eq("token_hash", tokenHash).maybeSingle();
-    if (!attempt) return null;
+    if (!attempt || !canRespond(attempt)) return null;
+    // questionId ends up in the storage path — it must be one of this interview's own questions.
+    const { data: question } = await admin.from("video_questions").select("id").eq("id", questionId).eq("video_interview_id", attempt.video_interview_id).maybeSingle();
+    if (!question) return null;
     const { data: application } = await admin.from("applications").select("company_id").eq("id", attempt.application_id).single();
 
-    const storagePath = `${application!.company_id}/${attempt.id}/${questionId}.webm`;
+    // Unique per upload: storage refuses to overwrite, so a retake or retried upload needs its own path.
+    const storagePath = `${application!.company_id}/${attempt.id}/${question.id}-${Date.now()}.webm`;
     if (videoBuffer) {
-      try {
-        await uploadPrivateFile(env.SUPABASE_VIDEO_BUCKET, storagePath, videoBuffer, "video/webm");
-      } catch (err) {
-        console.error("Video response upload failed:", err);
-      }
+      // Let a failed upload fail the request — the candidate's browser still has the recording and retries.
+      await uploadPrivateFile(env.SUPABASE_VIDEO_BUCKET, storagePath, videoBuffer, "video/webm");
     }
 
+    // The latest upload for a question replaces any earlier one.
+    await admin.from("video_responses").delete().eq("attempt_id", attempt.id).eq("question_id", question.id);
     const { data: response, error } = await admin
       .from("video_responses")
       .insert({
         attempt_id: attempt.id,
-        question_id: questionId,
+        question_id: question.id,
         storage_path: storagePath,
         duration_seconds: durationSeconds,
         transcript: null,
@@ -213,9 +228,11 @@ export async function submitVideoResponse(token: string, questionId: string, dur
   }
 
   const attempt = mockStore.videoInterviewAttempts.find((a) => a.token_hash === tokenHash);
-  if (!attempt) return null;
+  if (!attempt || !canRespond(attempt)) return null;
   const interview = mockStore.videoInterviews.find((v) => v.id === attempt.video_interview_id)!;
-  const question = interview.questions.find((q) => q.id === questionId)!;
+  const question = interview.questions.find((q) => q.id === questionId);
+  if (!question) return null;
+  mockStore.videoResponses = mockStore.videoResponses.filter((r) => !(r.attempt_id === attempt.id && r.question_id === question.id));
 
   const analysis = await analyzeVideoResponse(question, `Transcribed response to: "${question.prompt}" (demo transcript).`);
   const response = {
@@ -241,17 +258,20 @@ export async function completeVideoAttempt(token: string) {
   if (flags.hasSupabase) {
     const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
     const admin = createAdminSupabaseClient();
+    const { data: attempt } = await admin.from("video_interview_attempts").select("*").eq("token_hash", tokenHash).maybeSingle();
+    if (!attempt || !canRespond(attempt)) return null;
     const { data } = await admin
       .from("video_interview_attempts")
       .update({ completed_at: new Date().toISOString(), status: "completed" })
-      .eq("token_hash", tokenHash)
+      .eq("id", attempt.id)
+      .neq("status", "completed")
       .select("*")
       .maybeSingle();
     return (data as VideoInterviewAttempt | null) ?? null;
   }
 
   const attempt = mockStore.videoInterviewAttempts.find((a) => a.token_hash === tokenHash);
-  if (!attempt) return null;
+  if (!attempt || !canRespond(attempt)) return null;
   attempt.completed_at = new Date().toISOString();
   attempt.status = "completed";
   return attempt;

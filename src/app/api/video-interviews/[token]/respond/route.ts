@@ -18,7 +18,13 @@ export async function POST(request: Request, { params }: RouteContext<"/api/vide
   }
 
   const videoBuffer = video instanceof File && video.size > 0 ? Buffer.from(await video.arrayBuffer()) : null;
-  const response = await submitVideoResponse(token, questionId, Number(durationSeconds) || 0, videoBuffer);
-  if (!response) return NextResponse.json({ error: "Invalid or expired link" }, { status: 404 });
-  return NextResponse.json({ response });
+  let response;
+  try {
+    response = await submitVideoResponse(token, questionId, Math.max(0, Math.round(Number(durationSeconds) || 0)), videoBuffer);
+  } catch (err) {
+    console.error("[video-interviews/respond] upload failed", err);
+    return NextResponse.json({ error: "Your recording didn't upload — please try again." }, { status: 502 });
+  }
+  if (!response) return NextResponse.json({ error: "This interview link is invalid, has expired, or was already completed." }, { status: 404 });
+  return NextResponse.json({ response: { id: response.id, question_id: response.question_id } });
 }

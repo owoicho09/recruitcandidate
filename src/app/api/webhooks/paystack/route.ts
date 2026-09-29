@@ -1,41 +1,40 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
-import { verifyWebhookSignature, chargeAuthorization } from "@/lib/billing/paystack";
+import { verifyWebhookSignature, chargeAuthorization, disableSubscription } from "@/lib/billing/paystack";
+import { fulfillSubscriptionPayment, fulfillAddonPayment } from "@/lib/billing/fulfillment";
 import {
-  activateSubscription,
-  cancelSubscription,
   markPastDue,
-  hasProcessedEvent,
   recordSubscriptionEvent,
+  getSubscriptionEventByKey,
   markEventFailed,
-  setSubscriptionCancelAtPeriodEnd,
-  setSubscriptionStatus,
+  markEventProcessed,
   getCompanyOwnerEmail,
   getSubscription,
   getPlan,
+  getPlanByPaystackCode,
+  findCompanyIdByPaystack,
+  setSubscriptionPaystackDetails,
+  cancelSubscription,
+  setSubscriptionStatus,
   listCompanyAddons,
   listAddonProducts,
-  getAddonProductBySku,
-  fulfillAddonPurchase,
   cancelCompanyAddon,
   recordPayment,
 } from "@/lib/services/plan-access";
-import { setJobStatus, listJobs } from "@/lib/services/jobs";
-import { trackLifecycleEvent, recomputeLifecycleSegment } from "@/lib/services/lifecycle";
+import { trackLifecycleEvent } from "@/lib/services/lifecycle";
 import { sendEmail } from "@/lib/email/resend";
 import { env } from "@/lib/env";
 
 /**
  * Spec Part K §23 "Webhook Security": read the raw body, validate the
  * x-paystack-signature header via HMAC SHA-512, reject invalid signatures,
- * process idempotently by event hash, and return quickly. The billing
- * callback page (/dashboard/billing/callback) now also activates
- * subscriptions/add-ons directly off Paystack's verify response the moment
- * the user returns from checkout, so this route is no longer the only path —
- * it's the backstop that still owns renewals (subscription.create fires with
- * no browser present) and covers any case where the user never makes it back
- * to the callback page. activateSubscription/recordPayment both upsert, so
- * both paths landing for the same event is harmless.
+ * and process idempotently by event hash. The billing callback page also
+ * fulfills checkouts the moment the user returns; this route is the backstop
+ * for that and the only path for everything with no browser present —
+ * renewals, failed charges, cancellations.
+ *
+ * A failure returns 500 so Paystack redelivers, and a previously failed event
+ * is reprocessed on redelivery instead of being deduplicated away.
  */
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -45,30 +44,40 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  const event = JSON.parse(rawBody);
+  const event = JSON.parse(rawBody) as PaystackWebhookEvent;
   const eventKey = createHash("sha256").update(rawBody).digest("hex");
 
-  if (await hasProcessedEvent(eventKey)) {
+  const previous = await getSubscriptionEventByKey(eventKey);
+  if (previous?.processing_status === "processed") {
     return NextResponse.json({ ok: true, deduplicated: true });
   }
 
-  const companyId: string | undefined = event.data?.metadata?.company_id;
-  const record = await recordSubscriptionEvent({
-    event_key: eventKey,
-    event_type: event.event,
-    company_id: companyId ?? null,
-    subscription_id: null,
-    payload: event,
-    processed_at: new Date().toISOString(),
-    processing_status: "processed",
-    error: null,
-    created_at: new Date().toISOString(),
-  });
+  const eventId =
+    previous?.id ??
+    (
+      await recordSubscriptionEvent({
+        event_key: eventKey,
+        event_type: event.event,
+        company_id: null,
+        subscription_id: null,
+        payload: event as unknown as Record<string, unknown>,
+        processed_at: null,
+        processing_status: "pending",
+        error: null,
+        created_at: new Date().toISOString(),
+      })
+    ).id;
 
+  let companyId: string | null = null;
   try {
+    companyId = await resolveCompanyId(event);
     await processEvent(event, companyId);
+    await markEventProcessed(eventId, companyId);
   } catch (err) {
-    await markEventFailed(record.id, err instanceof Error ? err.message : "Unknown error");
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("[webhooks/paystack] processing failed", { event: event.event, companyId, message });
+    await markEventFailed(eventId, message);
+    return NextResponse.json({ error: "Processing failed" }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });
@@ -81,154 +90,175 @@ interface PaystackWebhookEvent {
     reference?: string;
     amount?: number;
     currency?: string;
-    metadata?: { plan_id?: string; purpose?: string; sku?: string; publish_job_id?: string };
+    status?: string;
+    metadata?: { company_id?: string; plan_id?: string; purpose?: string; sku?: string; publish_job_id?: string } | string | null;
     customer?: { customer_code?: string; email?: string };
     subscription_code?: string;
-    plan?: { plan_code?: string };
-    authorization?: { authorization_code?: string };
+    email_token?: string;
+    next_payment_date?: string | null;
+    subscription?: { subscription_code?: string; email_token?: string; next_payment_date?: string | null };
+    plan?: { plan_code?: string } | string | null;
+    authorization?: { authorization_code?: string; reusable?: boolean };
   };
 }
 
-async function processEvent(event: PaystackWebhookEvent, companyId?: string) {
-  // Paystack carries a subscription's original metadata forward onto its own
-  // recurring renewal charges, so "subscription" is both the explicit purpose
-  // set at checkout and the correct default for Paystack-initiated renewals.
-  const purpose = event.data.metadata?.purpose ?? "subscription";
+function metadataOf(event: PaystackWebhookEvent): Record<string, unknown> {
+  const raw = event.data.metadata;
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  return raw;
+}
+
+function subscriptionCodeOf(event: PaystackWebhookEvent): string | null {
+  return event.data.subscription_code ?? event.data.subscription?.subscription_code ?? null;
+}
+
+function planCodeOf(event: PaystackWebhookEvent): string | null {
+  const plan = event.data.plan;
+  if (!plan) return null;
+  return typeof plan === "string" ? plan : plan.plan_code ?? null;
+}
+
+/**
+ * Only checkout charges carry our metadata. Renewals, invoice and
+ * subscription events don't, so fall back to the Paystack subscription /
+ * customer codes stored on the company's subscription.
+ */
+async function resolveCompanyId(event: PaystackWebhookEvent): Promise<string | null> {
+  const fromMetadata = metadataOf(event).company_id;
+  if (typeof fromMetadata === "string" && fromMetadata) return fromMetadata;
+  return findCompanyIdByPaystack(subscriptionCodeOf(event), event.data.customer?.customer_code ?? null);
+}
+
+async function processEvent(event: PaystackWebhookEvent, companyId: string | null) {
+  if (!companyId) return; // Not ours (e.g. another product on the same Paystack account).
 
   switch (event.event) {
     case "charge.success":
-    case "subscription.create": {
-      if (!companyId) return;
-      if (purpose === "subscription") await handleSubscriptionCharge(event, companyId);
-      else await handleAddonCharge(event, companyId);
+      await handleChargeSuccess(event, companyId);
       break;
-    }
+    case "subscription.create":
+      await handleSubscriptionCreate(event, companyId);
+      break;
     case "invoice.payment_failed": {
-      if (!companyId) return;
+      if (!(await isCurrentSubscription(event, companyId))) return;
       await markPastDue(companyId, env.PAYMENT_GRACE_PERIOD_DAYS);
       await trackLifecycleEvent(companyId, "subscription_payment_failed");
       const ownerEmail = await getCompanyOwnerEmail(companyId);
       if (ownerEmail) {
-        await sendEmail({ companyId, type: "payment_failed", to: ownerEmail, subject: "Your RecruitCandidates payment failed", body: "We couldn't process your latest payment. Please update your payment method to avoid service interruption." });
+        await sendEmail({ companyId, type: "payment_failed", to: ownerEmail, subject: "Your RecruitCandidates payment failed", body: `We couldn't process your latest payment. Please update your card from the Billing page within ${env.PAYMENT_GRACE_PERIOD_DAYS} days to avoid service interruption.` });
       }
       break;
     }
     case "subscription.not_renew": {
-      if (!companyId) return;
-      await setSubscriptionCancelAtPeriodEnd(companyId, true);
+      if (!(await isCurrentSubscription(event, companyId))) return;
+      const sub = await getSubscription(companyId);
+      if (sub?.status === "active") await cancelSubscription(companyId, "Set to not renew via Paystack");
       break;
     }
     case "subscription.disable": {
-      if (!companyId) return;
-      await cancelSubscription(companyId, "Disabled via Paystack");
-      await setSubscriptionStatus(companyId, "canceled");
+      // Disabling the previous subscription on a plan change fires this too —
+      // it must not cancel the new one.
+      if (!(await isCurrentSubscription(event, companyId))) return;
+      const sub = await getSubscription(companyId);
+      if (!sub) return;
+      if (new Date(sub.period_end).getTime() > Date.now()) {
+        if (sub.status === "active") await cancelSubscription(companyId, "Disabled via Paystack");
+      } else {
+        await setSubscriptionStatus(companyId, "canceled");
+      }
       break;
     }
     case "subscription.expiring_cards": {
-      if (!companyId) return;
       const ownerEmail = await getCompanyOwnerEmail(companyId);
       if (ownerEmail) {
         await sendEmail({ companyId, type: "card_expiring", to: ownerEmail, subject: "Your card on file is expiring soon", body: "Update your payment method before your card expires to avoid an interruption in service." });
       }
       break;
     }
-    case "invoice.create":
-    case "invoice.update":
-      // Informational — surfaced via the billing dashboard's payment history, no state change needed.
-      break;
     default:
+      // invoice.create / invoice.update etc. are informational — charge.success is what grants access.
       break;
   }
 }
 
-async function handleSubscriptionCharge(event: PaystackWebhookEvent, companyId: string) {
-  const planId = event.data.metadata?.plan_id ?? (await resolveFallbackPlanId());
-  const authorizationCode = event.data.authorization?.authorization_code;
+async function isCurrentSubscription(event: PaystackWebhookEvent, companyId: string): Promise<boolean> {
+  const code = subscriptionCodeOf(event);
+  if (!code) return true;
+  const sub = await getSubscription(companyId);
+  return !sub?.paystack_subscription_code || sub.paystack_subscription_code === code;
+}
 
-  const existing = await getSubscription(companyId);
-  const wasAlreadyActive = existing?.status === "active" || existing?.status === "non_renewing";
+async function handleChargeSuccess(event: PaystackWebhookEvent, companyId: string) {
+  const metadata = metadataOf(event);
+  const purpose = typeof metadata.purpose === "string" ? metadata.purpose : null;
+  const reference = event.data.reference;
+  if (!reference) return;
 
-  const subscription = await activateSubscription(
+  if (purpose === "addon_renewal") return; // Recorded by rechargeRecurringAddons when it made the charge.
+
+  if (purpose?.endsWith("_addon")) {
+    if (typeof metadata.sku !== "string") return;
+    await fulfillAddonPayment({ companyId, sku: metadata.sku, reference, amountKobo: event.data.amount ?? 0, currency: event.data.currency ?? "NGN", transactionId: event.data.id ? String(event.data.id) : null, metadata });
+    return;
+  }
+
+  // Subscription checkout (our metadata) or a Paystack renewal (plan on the charge, no metadata).
+  const planCode = planCodeOf(event);
+  const planFromCode = planCode ? await getPlanByPaystackCode(planCode) : null;
+  const planId = (typeof metadata.plan_id === "string" ? metadata.plan_id : null) ?? planFromCode?.id ?? null;
+  if (purpose !== "subscription" && !planFromCode) return; // A charge that isn't for one of our plans.
+  if (!planId || !(await getPlan(planId))) throw new Error(`Can't resolve plan for charge ${reference} (plan code ${planCode ?? "none"})`);
+
+  const authorizationCode = event.data.authorization?.reusable === false ? null : event.data.authorization?.authorization_code ?? null;
+  const result = await fulfillSubscriptionPayment({
     companyId,
     planId,
-    event.data.customer?.customer_code ?? "CUS_unknown",
-    event.data.subscription_code ?? event.data.plan?.plan_code ?? "SUB_unknown",
+    reference,
+    amountKobo: event.data.amount ?? 0,
+    currency: event.data.currency ?? "NGN",
+    customerCode: event.data.customer?.customer_code ?? null,
+    planCode,
     authorizationCode,
-  );
+    transactionId: event.data.id ? String(event.data.id) : null,
+    metadata,
+  });
 
-  if (!wasAlreadyActive) {
-    await trackLifecycleEvent(companyId, "subscription_activated", null, { plan_id: planId });
-    const ownerEmail = await getCompanyOwnerEmail(companyId);
-    if (ownerEmail) {
-      const purchasedPlan = await getPlan(planId);
-      const validTill = new Date(subscription.period_end).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-      await sendEmail({
-        companyId,
-        type: "subscription_activated",
-        to: ownerEmail,
-        subject: "Your RecruitCandidates subscription is active",
-        body: `Your subscription has been activated${purchasedPlan ? ` on the ${purchasedPlan.name} plan` : ""}, valid till ${validTill}. You now have full access to RecruitCandidates — thanks for subscribing!`,
-      });
-    }
-  }
-
-  if (event.data.reference) {
-    await recordPayment({
-      companyId,
-      subscriptionId: subscription.id,
-      paystackReference: event.data.reference,
-      paystackTransactionId: event.data.id ? String(event.data.id) : null,
-      amount: koboToNaira(event.data.amount),
-      currency: event.data.currency ?? "NGN",
-      status: "success",
-      paidAt: new Date().toISOString(),
-      metadata: event.data.metadata ?? {},
-    });
-  }
-
-  // Renewal (not the first activation) — recharge active recurring add-ons on the same cycle.
-  if (wasAlreadyActive && authorizationCode) {
+  // Renewal — recharge active recurring add-ons on the same cycle.
+  if (result.isRenewal && authorizationCode) {
     await rechargeRecurringAddons(companyId, authorizationCode, event.data.customer?.email ?? "");
   }
+}
 
-  // Checkout was triggered from a "publish this job" prompt — finish what the
-  // payment was actually for instead of leaving the user to come back and
-  // publish manually.
-  const publishJobId = event.data.metadata?.publish_job_id;
-  if (publishJobId) {
-    const wasFirstPublish = !(await listJobs(companyId)).some((j) => j.status === "published");
-    await setJobStatus(companyId, publishJobId, "published");
-    if (wasFirstPublish) await trackLifecycleEvent(companyId, "first_job_published", null);
-    else await recomputeLifecycleSegment(companyId);
+/**
+ * Paystack creates the subscription for a plan checkout asynchronously; this
+ * is where its code + email token (needed to cancel it) arrive. If the company
+ * already had a different Paystack subscription, this is a plan change — stop
+ * the old one billing.
+ */
+async function handleSubscriptionCreate(event: PaystackWebhookEvent, companyId: string) {
+  const code = subscriptionCodeOf(event);
+  if (!code) return;
+  const existing = await getSubscription(companyId);
+  const oldCode = existing?.paystack_subscription_code;
+  if (oldCode?.startsWith("SUB_") && oldCode !== code && existing?.paystack_email_token) {
+    try {
+      await disableSubscription(oldCode, existing.paystack_email_token);
+    } catch (err) {
+      console.error("[webhooks/paystack] couldn't disable previous subscription", { companyId, oldCode, err });
+    }
   }
-}
-
-async function handleAddonCharge(event: PaystackWebhookEvent, companyId: string) {
-  const sku = event.data.metadata?.sku;
-  if (!sku || !event.data.reference) return;
-
-  const addon = await getAddonProductBySku(sku);
-  if (!addon) return;
-
-  await fulfillAddonPurchase(companyId, addon, event.data.reference);
-
-  const subscription = await getSubscription(companyId);
-  await recordPayment({
-    companyId,
-    subscriptionId: subscription?.id ?? null,
-    paystackReference: event.data.reference,
-    paystackTransactionId: event.data.id ? String(event.data.id) : null,
-    amount: koboToNaira(event.data.amount),
-    currency: event.data.currency ?? "NGN",
-    status: "success",
-    paidAt: new Date().toISOString(),
-    metadata: event.data.metadata ?? {},
+  await setSubscriptionPaystackDetails(companyId, {
+    subscriptionCode: code,
+    emailToken: event.data.email_token ?? event.data.subscription?.email_token ?? null,
+    customerCode: event.data.customer?.customer_code ?? null,
   });
-}
-
-/** Paystack reports amounts in kobo; this app stores/displays whole Naira, matching plans.amount. */
-function koboToNaira(amount: number | undefined): number {
-  return Math.round((amount ?? 0) / 100);
 }
 
 /**
@@ -277,16 +307,4 @@ async function rechargeRecurringAddons(companyId: string, authorizationCode: str
       });
     }
   }
-}
-
-async function resolveFallbackPlanId(): Promise<string> {
-  const { flags } = await import("@/lib/env");
-  if (flags.hasSupabase) {
-    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
-    const admin = createAdminSupabaseClient();
-    const { data } = await admin.from("plans").select("id").eq("slug", "growth").eq("interval", "monthly").single();
-    return data!.id;
-  }
-  const { mockStore } = await import("@/lib/data/store");
-  return mockStore.plans.find((p) => p.slug === "growth" && p.interval === "monthly")!.id;
 }

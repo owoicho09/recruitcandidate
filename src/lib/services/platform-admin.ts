@@ -1,5 +1,6 @@
 import { flags } from "@/lib/env";
 import { mockStore } from "@/lib/data/store";
+import { expireLapsedSubscriptions } from "@/lib/services/plan-access";
 import type { Application, AuditLog, Candidate, Company, CompanyMember, Job, Payment, Plan, Subscription, UsagePeriod } from "@/types/database";
 
 /**
@@ -9,6 +10,7 @@ import type { Application, AuditLog, Candidate, Company, CompanyMember, Job, Pay
  * cross-tenant and goes through the admin (service-role) client.
  */
 export async function getPlatformStats() {
+  await expireLapsedSubscriptions();
   if (flags.hasSupabase) {
     const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
     const admin = createAdminSupabaseClient();
@@ -79,6 +81,7 @@ export async function getPlatformStats() {
 }
 
 export async function listCompaniesForAdmin() {
+  await expireLapsedSubscriptions();
   if (flags.hasSupabase) {
     const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
     const admin = createAdminSupabaseClient();
@@ -116,6 +119,7 @@ export async function listCompaniesForAdmin() {
 }
 
 export async function getCompanyForAdmin(companyId: string) {
+  await expireLapsedSubscriptions(companyId);
   if (flags.hasSupabase) {
     const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
     const admin = createAdminSupabaseClient();
@@ -161,6 +165,7 @@ export async function getCompanyForAdmin(companyId: string) {
 }
 
 export async function listSubscriptionsForAdmin() {
+  await expireLapsedSubscriptions();
   if (flags.hasSupabase) {
     const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
     const admin = createAdminSupabaseClient();

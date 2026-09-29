@@ -68,7 +68,51 @@ export async function listCompanyAddons(companyId: string, status?: CompanyAddon
   return mockStore.companyAddons.filter((a) => a.company_id === companyId && (!status || a.status === status));
 }
 
+/**
+ * Paystack's renewal charge can land a little after period_end — don't cut off
+ * a paying customer in that window. Past it, a renewal that never arrived means
+ * the subscription has lapsed.
+ */
+const RENEWAL_GRACE_MS = 2 * 86400000;
+
+/**
+ * Nothing else moves a subscription out of "active" once its period ends
+ * without a renewal (e.g. Paystack never fired subscription.disable, or the
+ * plan was granted without a Paystack subscription at all), so lapsed rows are
+ * expired here: active → past_due, non_renewing → canceled, and "attention"
+ * rows whose payment grace period has run out → past_due. Called on every
+ * subscription read, and across all companies from platform-admin views.
+ */
+export async function expireLapsedSubscriptions(companyId?: string): Promise<void> {
+  const cutoff = new Date(Date.now() - RENEWAL_GRACE_MS).toISOString();
+  const now = new Date().toISOString();
+
+  if (flags.hasSupabase) {
+    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
+    const admin = createAdminSupabaseClient();
+    const expire = (fromStatus: Subscription["status"], toStatus: Subscription["status"], column: "period_end" | "grace_period_end", before: string) => {
+      let query = admin.from("subscriptions").update({ status: toStatus }).eq("status", fromStatus).lt(column, before);
+      if (companyId) query = query.eq("company_id", companyId);
+      return query;
+    };
+    await Promise.all([
+      expire("active", "past_due", "period_end", cutoff),
+      expire("non_renewing", "canceled", "period_end", cutoff),
+      expire("attention", "past_due", "grace_period_end", now),
+    ]);
+    return;
+  }
+
+  for (const s of mockStore.subscriptions) {
+    if (companyId && s.company_id !== companyId) continue;
+    if (s.status === "active" && s.period_end < cutoff) s.status = "past_due";
+    else if (s.status === "non_renewing" && s.period_end < cutoff) s.status = "canceled";
+    else if (s.status === "attention" && s.grace_period_end && s.grace_period_end < now) s.status = "past_due";
+  }
+}
+
 export async function getSubscription(companyId: string): Promise<Subscription | null> {
+  await expireLapsedSubscriptions(companyId);
   if (flags.hasSupabase) {
     const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
     const admin = createAdminSupabaseClient();
@@ -84,16 +128,22 @@ export async function getPlanForCompany(companyId: string): Promise<Plan | null>
   return getPlan(sub.plan_id);
 }
 
+/**
+ * Paid-up statuses. "attention" (a renewal charge failed) keeps access until
+ * its grace_period_end — expireLapsedSubscriptions moves it to past_due after.
+ */
+export function isEntitled(sub: Pick<Subscription, "status"> | null): boolean {
+  return !!sub && (sub.status === "active" || sub.status === "non_renewing" || sub.status === "attention");
+}
+
 /** Job creation (and everything downstream of it) requires a real, paid-for plan — not just an account. */
 export async function hasActiveSubscription(companyId: string): Promise<boolean> {
-  const sub = await getSubscription(companyId);
-  return !!sub && (sub.status === "active" || sub.status === "non_renewing");
+  return isEntitled(await getSubscription(companyId));
 }
 
 export async function hasLiveAiInterviewerAccess(companyId: string): Promise<boolean> {
   const [sub, plan] = await Promise.all([getSubscription(companyId), getPlanForCompany(companyId)]);
-  if (!sub || !plan) return false;
-  if (sub.status !== "active" && sub.status !== "non_renewing") return false;
+  if (!sub || !plan || !isEntitled(sub)) return false;
   return plan.features.includes("live_ai_interviewer");
 }
 
@@ -124,13 +174,13 @@ export async function startCheckout(companyId: string, planId: string): Promise<
   if (flags.hasSupabase) {
     const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
     const admin = createAdminSupabaseClient();
-    const { data: existing } = await admin.from("subscriptions").select("id").eq("company_id", companyId).maybeSingle();
+    const { data: existing } = await admin.from("subscriptions").select("*").eq("company_id", companyId).maybeSingle();
 
-    if (existing) {
-      const { data, error } = await admin.from("subscriptions").update({ plan_id: planId }).eq("id", existing.id).select("*").single();
-      if (error) throw error;
-      return data as Subscription;
-    }
+    // An existing subscription keeps its current (paid-for) plan until payment
+    // actually succeeds — the callback/webhook switch plan_id from the
+    // checkout metadata. Rewriting it here handed out the new plan unpaid
+    // whenever a checkout was started and then abandoned or failed.
+    if (existing) return existing as Subscription;
 
     const now = new Date().toISOString();
     const { data, error } = await admin
@@ -143,9 +193,7 @@ export async function startCheckout(companyId: string, planId: string): Promise<
   }
 
   let subscription = mockStore.subscriptions.find((s) => s.company_id === companyId);
-  if (subscription) {
-    subscription.plan_id = planId;
-  } else {
+  if (!subscription) {
     const now = new Date().toISOString();
     subscription = {
       id: id(), company_id: companyId, plan_id: planId, paystack_customer_code: null, paystack_subscription_code: null,
@@ -157,133 +205,154 @@ export async function startCheckout(companyId: string, planId: string): Promise<
   return subscription;
 }
 
-export async function activateSubscription(
-  companyId: string,
-  planId: string,
-  paystackCustomerCode: string,
-  paystackSubscriptionCode: string,
-  paystackAuthorizationCode?: string,
-): Promise<Subscription> {
-  const { resetApplicationUsage } = await import("@/lib/services/usage-tracking");
-  const now = new Date().toISOString();
-  const periodEnd = daysFromNow(30);
+/** Length of one paid period for a plan — annual plans must not lapse after 30 days. */
+export function periodEndFor(plan: Pick<Plan, "interval">, from = new Date()): string {
+  const end = new Date(from);
+  if (plan.interval === "annual") end.setFullYear(end.getFullYear() + 1);
+  else end.setMonth(end.getMonth() + 1);
+  return end.toISOString();
+}
 
+/** Writes subscription fields for a company, creating the row if it doesn't exist yet. */
+async function upsertSubscription(companyId: string, fields: Partial<Subscription>): Promise<Subscription> {
   if (flags.hasSupabase) {
     const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
     const admin = createAdminSupabaseClient();
-
     const { data: existing } = await admin.from("subscriptions").select("id").eq("company_id", companyId).maybeSingle();
-    const fields: Record<string, unknown> = {
-      plan_id: planId,
-      paystack_customer_code: paystackCustomerCode,
-      paystack_subscription_code: paystackSubscriptionCode,
-      status: "active",
-      period_start: now,
-      period_end: periodEnd,
-      next_payment_date: periodEnd,
-      cancel_at_period_end: false,
-      grace_period_end: null,
-    };
-    if (paystackAuthorizationCode) fields.paystack_authorization_code = paystackAuthorizationCode;
-
-    let subscription: Subscription;
-    if (existing) {
-      const { data, error } = await admin.from("subscriptions").update(fields).eq("id", existing.id).select("*").single();
-      if (error) throw error;
-      subscription = data as Subscription;
-    } else {
-      const { data, error } = await admin.from("subscriptions").insert({ company_id: companyId, ...fields }).select("*").single();
-      if (error) throw error;
-      subscription = data as Subscription;
-    }
-
-    await resetApplicationUsage(companyId, subscription.id, now, periodEnd);
-    return subscription;
-  }
-
-  let subscription = mockStore.subscriptions.find((s) => s.company_id === companyId);
-  if (!subscription) {
-    subscription = {
-      id: id(),
-      company_id: companyId,
-      plan_id: planId,
-      paystack_customer_code: paystackCustomerCode,
-      paystack_subscription_code: paystackSubscriptionCode,
-      paystack_email_token: null,
-      paystack_authorization_code: paystackAuthorizationCode ?? null,
-      status: "active",
-      period_start: now,
-      period_end: periodEnd,
-      next_payment_date: periodEnd,
-      cancel_at_period_end: false,
-      grace_period_end: null,
-      canceled_at: null,
-      cancellation_reason: null,
-      created_at: now,
-      updated_at: now,
-    };
-    mockStore.subscriptions.push(subscription);
-  } else {
-    Object.assign(subscription, {
-      plan_id: planId,
-      paystack_customer_code: paystackCustomerCode,
-      paystack_subscription_code: paystackSubscriptionCode,
-      paystack_authorization_code: paystackAuthorizationCode ?? subscription.paystack_authorization_code,
-      status: "active",
-      period_start: now,
-      period_end: periodEnd,
-      next_payment_date: periodEnd,
-      cancel_at_period_end: false,
-      grace_period_end: null,
-      updated_at: now,
-    });
-  }
-
-  await resetApplicationUsage(companyId, subscription.id, now, periodEnd);
-  return subscription;
-}
-
-export async function cancelSubscription(companyId: string, reason: string): Promise<Subscription | null> {
-  const fields = { cancel_at_period_end: true, status: "non_renewing", canceled_at: new Date().toISOString(), cancellation_reason: reason };
-
-  if (flags.hasSupabase) {
-    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
-    const admin = createAdminSupabaseClient();
-    const { data, error } = await admin.from("subscriptions").update(fields).eq("company_id", companyId).select("*").maybeSingle();
-    if (error) throw error;
-    return (data as Subscription | null) ?? null;
-  }
-
-  const subscription = mockStore.subscriptions.find((s) => s.company_id === companyId);
-  if (!subscription) return null;
-  Object.assign(subscription, fields);
-  return subscription;
-}
-
-export async function reactivateSubscription(companyId: string): Promise<Subscription | null> {
-  if (flags.hasSupabase) {
-    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
-    const admin = createAdminSupabaseClient();
-    const { data: existing } = await admin.from("subscriptions").select("status").eq("company_id", companyId).maybeSingle();
-    if (!existing) return null;
-    const status = existing.status === "non_renewing" || existing.status === "canceled" ? "active" : existing.status;
-    const { data, error } = await admin
-      .from("subscriptions")
-      .update({ cancel_at_period_end: false, canceled_at: null, cancellation_reason: null, status })
-      .eq("company_id", companyId)
-      .select("*")
-      .single();
+    const query = existing
+      ? admin.from("subscriptions").update(fields).eq("id", existing.id)
+      : admin.from("subscriptions").insert({ company_id: companyId, ...fields });
+    const { data, error } = await query.select("*").single();
     if (error) throw error;
     return data as Subscription;
   }
 
-  const subscription = mockStore.subscriptions.find((s) => s.company_id === companyId);
-  if (!subscription) return null;
-  subscription.cancel_at_period_end = false;
-  subscription.canceled_at = null;
-  subscription.cancellation_reason = null;
-  if (subscription.status === "non_renewing" || subscription.status === "canceled") subscription.status = "active";
+  const now = new Date().toISOString();
+  let subscription = mockStore.subscriptions.find((s) => s.company_id === companyId);
+  if (!subscription) {
+    subscription = {
+      id: id(), company_id: companyId, plan_id: "", paystack_customer_code: null, paystack_subscription_code: null,
+      paystack_email_token: null, paystack_authorization_code: null, status: "pending", period_start: now, period_end: now, next_payment_date: null,
+      cancel_at_period_end: false, grace_period_end: null, canceled_at: null, cancellation_reason: null, created_at: now, updated_at: now,
+    };
+    mockStore.subscriptions.push(subscription);
+  }
+  Object.assign(subscription, fields, { updated_at: now });
   return subscription;
+}
+
+export interface ActivationDetails {
+  customerCode: string | null;
+  /** undefined keeps the stored value; null clears it. */
+  subscriptionCode?: string | null;
+  emailToken?: string | null;
+  authorizationCode?: string | null;
+  /** Paystack's own next charge date when known; otherwise one plan interval from now. */
+  periodEnd?: string | null;
+}
+
+/**
+ * Starts (or renews) a paid period. Undefined Paystack details keep whatever
+ * is already stored, so a renewal charge that doesn't carry e.g. the email
+ * token can't wipe it out.
+ */
+export async function activateSubscription(companyId: string, planId: string, details: ActivationDetails): Promise<Subscription> {
+  const { resetApplicationUsage } = await import("@/lib/services/usage-tracking");
+  const plan = await getPlan(planId);
+  const now = new Date().toISOString();
+  const periodEnd = details.periodEnd && new Date(details.periodEnd).getTime() > Date.now() ? new Date(details.periodEnd).toISOString() : periodEndFor(plan ?? { interval: "monthly" });
+
+  const fields: Partial<Subscription> = {
+    plan_id: planId,
+    status: "active",
+    period_start: now,
+    period_end: periodEnd,
+    next_payment_date: periodEnd,
+    cancel_at_period_end: false,
+    grace_period_end: null,
+    canceled_at: null,
+    cancellation_reason: null,
+  };
+  if (details.customerCode) fields.paystack_customer_code = details.customerCode;
+  // null (not undefined) clears a stale code — e.g. the previous plan's subscription, just disabled.
+  if (details.subscriptionCode !== undefined) fields.paystack_subscription_code = details.subscriptionCode;
+  if (details.emailToken !== undefined) fields.paystack_email_token = details.emailToken;
+  if (details.authorizationCode) fields.paystack_authorization_code = details.authorizationCode;
+
+  const subscription = await upsertSubscription(companyId, fields);
+  await resetApplicationUsage(companyId, subscription.id, now, periodEnd);
+  return subscription;
+}
+
+/** Records the Paystack subscription identifiers without touching the paid period. */
+export async function setSubscriptionPaystackDetails(companyId: string, details: { subscriptionCode?: string | null; emailToken?: string | null; customerCode?: string | null; nextPaymentDate?: string | null }): Promise<Subscription> {
+  const fields: Partial<Subscription> = {};
+  if (details.subscriptionCode) fields.paystack_subscription_code = details.subscriptionCode;
+  if (details.emailToken) fields.paystack_email_token = details.emailToken;
+  if (details.customerCode) fields.paystack_customer_code = details.customerCode;
+  if (details.nextPaymentDate) fields.next_payment_date = details.nextPaymentDate;
+  return upsertSubscription(companyId, fields);
+}
+
+/** Maps a Paystack webhook (which often carries no metadata) back to the company it belongs to. */
+export async function findCompanyIdByPaystack(subscriptionCode?: string | null, customerCode?: string | null): Promise<string | null> {
+  if (!subscriptionCode && !customerCode) return null;
+  if (flags.hasSupabase) {
+    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
+    const admin = createAdminSupabaseClient();
+    if (subscriptionCode) {
+      const { data } = await admin.from("subscriptions").select("company_id").eq("paystack_subscription_code", subscriptionCode).maybeSingle();
+      if (data) return data.company_id;
+    }
+    if (customerCode) {
+      const { data } = await admin.from("subscriptions").select("company_id").eq("paystack_customer_code", customerCode).limit(1);
+      if (data?.[0]) return data[0].company_id;
+    }
+    return null;
+  }
+  const match =
+    (subscriptionCode && mockStore.subscriptions.find((s) => s.paystack_subscription_code === subscriptionCode)) ||
+    (customerCode && mockStore.subscriptions.find((s) => s.paystack_customer_code === customerCode));
+  return match ? match.company_id : null;
+}
+
+export async function getPlanByPaystackCode(planCode: string): Promise<Plan | null> {
+  if (flags.hasSupabase) {
+    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
+    const admin = createAdminSupabaseClient();
+    const { data } = await admin.from("plans").select("*").eq("paystack_plan_code", planCode).maybeSingle();
+    return (data as Plan | null) ?? null;
+  }
+  return mockStore.plans.find((p) => p.paystack_plan_code === planCode) ?? null;
+}
+
+/** A Paystack reference that's already been recorded must never grant a paid period a second time. */
+export async function hasPaymentReference(reference: string): Promise<boolean> {
+  if (flags.hasSupabase) {
+    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
+    const admin = createAdminSupabaseClient();
+    const { data } = await admin.from("payments").select("id").eq("paystack_reference", reference).maybeSingle();
+    return !!data;
+  }
+  return mockStore.payments.some((p) => p.paystack_reference === reference);
+}
+
+/** Stops renewal but keeps access until period_end — the lapse sweep cancels it after that. */
+export async function cancelSubscription(companyId: string, reason: string): Promise<Subscription | null> {
+  const existing = await getSubscription(companyId);
+  if (!existing) return null;
+  return upsertSubscription(companyId, { cancel_at_period_end: true, status: "non_renewing", canceled_at: new Date().toISOString(), cancellation_reason: reason });
+}
+
+/**
+ * Undoes a pending cancellation. Only a non_renewing subscription still inside
+ * its paid period can be reactivated — a canceled, lapsed, or suspended one
+ * has to go back through checkout and pay.
+ */
+export async function reactivateSubscription(companyId: string): Promise<Subscription | null> {
+  const existing = await getSubscription(companyId);
+  if (!existing || existing.status !== "non_renewing" || new Date(existing.period_end).getTime() <= Date.now()) return null;
+  return upsertSubscription(companyId, { cancel_at_period_end: false, canceled_at: null, cancellation_reason: null, status: "active" });
 }
 
 export async function markPastDue(companyId: string, graceDays: number): Promise<Subscription | null> {
@@ -468,6 +537,39 @@ export async function recordPayment(input: {
   return payment;
 }
 
+/**
+ * Insert-only variant of recordPayment: returns null instead of overwriting
+ * when the reference already exists. The unique paystack_reference makes this
+ * the lock that stops a concurrent callback + webhook from fulfilling twice.
+ */
+export async function recordPaymentOnce(input: Parameters<typeof recordPayment>[0]): Promise<Payment | null> {
+  const fields = {
+    company_id: input.companyId,
+    subscription_id: input.subscriptionId,
+    paystack_reference: input.paystackReference,
+    paystack_transaction_id: input.paystackTransactionId,
+    amount: input.amount,
+    currency: input.currency,
+    status: input.status,
+    paid_at: input.paidAt,
+    metadata: input.metadata,
+  };
+
+  if (flags.hasSupabase) {
+    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
+    const admin = createAdminSupabaseClient();
+    const { data, error } = await admin.from("payments").insert(fields).select("*").single();
+    if (error?.code === "23505") return null;
+    if (error) throw error;
+    return data as Payment;
+  }
+
+  if (mockStore.payments.some((p) => p.paystack_reference === input.paystackReference)) return null;
+  const payment: Payment = { id: id(), ...fields };
+  mockStore.payments.push(payment);
+  return payment;
+}
+
 export async function listPayments(companyId: string): Promise<Payment[]> {
   if (flags.hasSupabase) {
     const { createServerSupabaseClient } = await import("@/lib/supabase/server");
@@ -501,6 +603,29 @@ export async function recordSubscriptionEvent(record: Omit<SubscriptionEvent, "i
   const event: SubscriptionEvent = { id: id(), ...record };
   mockStore.subscriptionEvents.push(event);
   return event;
+}
+
+/** The stored webhook event for this key, if any — a failed one is reprocessed on Paystack's redelivery rather than deduplicated. */
+export async function getSubscriptionEventByKey(eventKey: string): Promise<Pick<SubscriptionEvent, "id" | "processing_status"> | null> {
+  if (flags.hasSupabase) {
+    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
+    const admin = createAdminSupabaseClient();
+    const { data } = await admin.from("subscription_events").select("id, processing_status").eq("event_key", eventKey).maybeSingle();
+    return data ?? null;
+  }
+  return mockStore.subscriptionEvents.find((e) => e.event_key === eventKey) ?? null;
+}
+
+export async function markEventProcessed(eventId: string, companyId: string | null): Promise<void> {
+  const fields = { processing_status: "processed" as const, error: null, processed_at: new Date().toISOString(), company_id: companyId };
+  if (flags.hasSupabase) {
+    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
+    const admin = createAdminSupabaseClient();
+    await admin.from("subscription_events").update(fields).eq("id", eventId);
+    return;
+  }
+  const event = mockStore.subscriptionEvents.find((e) => e.id === eventId);
+  if (event) Object.assign(event, fields);
 }
 
 export async function markEventFailed(eventId: string, error: string): Promise<void> {

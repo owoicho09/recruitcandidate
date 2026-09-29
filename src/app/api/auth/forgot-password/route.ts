@@ -6,6 +6,7 @@ import { daysFromNow } from "@/lib/data/ids";
 import { sendEmail } from "@/lib/email/resend";
 import { env, flags } from "@/lib/env";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { findAuthUserIdByEmail } from "@/lib/auth/find-user";
 
 export async function POST(request: Request) {
   const allowed = await checkRateLimit(`forgot-password:${getClientIp(request)}`, 5, 60 * 60);
@@ -18,14 +19,12 @@ export async function POST(request: Request) {
   if (flags.hasSupabase) {
     const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
     const admin = createAdminSupabaseClient();
-    const {
-      data: { users },
-    } = await admin.auth.admin.listUsers();
-    const user = users.find((u) => u.email?.toLowerCase() === parsed.data.email.toLowerCase());
+    const userId = await findAuthUserIdByEmail(admin, parsed.data.email);
+    const user = userId ? { id: userId } : null;
 
     // Always return success — never reveal whether an account exists for this email.
     if (user) {
-      const { data: member } = await admin.from("company_members").select("company_id").eq("user_id", user.id).maybeSingle();
+      const { data: member } = await admin.from("company_members").select("company_id").eq("user_id", user.id).limit(1).maybeSingle();
       // We route the recovery token through our own /reset-password page (verifyOtp server-side)
       // rather than Supabase's action_link, so the flow matches demo mode and doesn't depend on
       // Supabase's hosted redirect/hash-fragment handling.

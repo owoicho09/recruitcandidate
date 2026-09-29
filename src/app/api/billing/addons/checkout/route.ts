@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/require-session";
 import { getAddonProductBySku, getPlanForCompany, hasActiveSubscription } from "@/lib/services/plan-access";
 import { initializeTransaction } from "@/lib/billing/paystack";
+import { billingCallbackUrl } from "@/lib/billing/callback-url";
 import { id } from "@/lib/data/ids";
-import { env } from "@/lib/env";
 import type { PlanSlug } from "@/types/database";
 
 const PLAN_RANK: Record<PlanSlug, number> = { starter: 0, growth: 1, scale: 2, enterprise: 3 };
@@ -29,13 +29,18 @@ export async function POST(request: Request) {
   }
 
   const reference = `addon_${id()}`;
-  const { authorizationUrl } = await initializeTransaction({
-    email: session.email,
-    reference,
-    callbackUrl: env.PAYSTACK_CALLBACK_URL,
-    metadata: { company_id: session.companyId, user_id: session.userId, purpose: `${addon.kind}_addon`, sku: addon.sku },
-    amountNaira: addon.amount,
-  });
-
-  return NextResponse.json({ redirectUrl: authorizationUrl });
+  try {
+    const { authorizationUrl } = await initializeTransaction({
+      email: session.email,
+      reference,
+      callbackUrl: billingCallbackUrl(request),
+      metadata: { company_id: session.companyId, user_id: session.userId, purpose: `${addon.kind}_addon`, sku: addon.sku },
+      amountNaira: addon.amount,
+    });
+    return NextResponse.json({ redirectUrl: authorizationUrl });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("[billing/addons/checkout] Paystack initialize failed", { companyId: session.companyId, sku: addon.sku, message });
+    return NextResponse.json({ error: `Payment provider error: ${message}` }, { status: 502 });
+  }
 }

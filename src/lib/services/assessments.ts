@@ -163,6 +163,18 @@ export async function getAttemptByToken(token: string) {
   return { attempt, assessment, application, job, company, candidate };
 }
 
+/** Small allowance for a candidate who started just before the deadline and is submitting as it passes. */
+const SUBMIT_GRACE_MS = 15 * 60 * 1000;
+
+function isExpired(attempt: Pick<AssessmentAttempt, "expires_at">, graceMs = 0): boolean {
+  return new Date(attempt.expires_at).getTime() + graceMs < Date.now();
+}
+
+/** One submission per invitation, and only before the deadline — a candidate can't retake after seeing the outcome. */
+function canSubmit(attempt: Pick<AssessmentAttempt, "status" | "expires_at">): boolean {
+  return (attempt.status === "pending" || attempt.status === "in_progress") && !isExpired(attempt, SUBMIT_GRACE_MS);
+}
+
 export async function startAttempt(token: string) {
   const tokenHash = hashToken(token);
 
@@ -170,13 +182,15 @@ export async function startAttempt(token: string) {
     const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
     const admin = createAdminSupabaseClient();
     const { data: attempt } = await admin.from("assessment_attempts").select("*").eq("token_hash", tokenHash).maybeSingle();
-    if (!attempt || attempt.status !== "pending") return (attempt as AssessmentAttempt | null) ?? null;
-    const { data } = await admin.from("assessment_attempts").update({ started_at: new Date().toISOString(), status: "in_progress" }).eq("id", attempt.id).select("*").single();
+    if (!attempt || isExpired(attempt)) return null;
+    if (attempt.status !== "pending") return attempt as AssessmentAttempt;
+    const { data } = await admin.from("assessment_attempts").update({ started_at: new Date().toISOString(), status: "in_progress" }).eq("id", attempt.id).eq("status", "pending").select("*").single();
     return data as AssessmentAttempt;
   }
 
   const attempt = mockStore.assessmentAttempts.find((a) => a.token_hash === tokenHash);
-  if (!attempt || attempt.status !== "pending") return attempt ?? null;
+  if (!attempt || isExpired(attempt)) return null;
+  if (attempt.status !== "pending") return attempt;
   attempt.started_at = new Date().toISOString();
   attempt.status = "in_progress";
   return attempt;
@@ -210,7 +224,7 @@ export async function submitAttempt(token: string, answers: Record<string, strin
     const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
     const admin = createAdminSupabaseClient();
     const { data: attempt } = await admin.from("assessment_attempts").select("*").eq("token_hash", tokenHash).maybeSingle();
-    if (!attempt) return null;
+    if (!attempt || !canSubmit(attempt)) return null;
     const { data: questions } = await admin.from("assessment_questions").select("*").eq("assessment_id", attempt.assessment_id);
     const { data: assessment } = await admin.from("assessments").select("pass_mark").eq("id", attempt.assessment_id).single();
 
@@ -219,13 +233,14 @@ export async function submitAttempt(token: string, answers: Record<string, strin
       .from("assessment_attempts")
       .update({ answers, score, section_scores: sectionScores, passed: score >= assessment!.pass_mark, completed_at: new Date().toISOString(), status: "completed" })
       .eq("id", attempt.id)
+      .neq("status", "completed")
       .select("*")
-      .single();
-    return updated as AssessmentAttempt;
+      .maybeSingle();
+    return (updated as AssessmentAttempt | null) ?? null;
   }
 
   const attempt = mockStore.assessmentAttempts.find((a) => a.token_hash === tokenHash);
-  if (!attempt) return null;
+  if (!attempt || !canSubmit(attempt)) return null;
   const assessment = mockStore.assessments.find((a) => a.id === attempt.assessment_id)!;
 
   const { score, sectionScores } = scoreAssessment(assessment.questions, answers);

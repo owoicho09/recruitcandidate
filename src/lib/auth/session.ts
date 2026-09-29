@@ -83,6 +83,9 @@ async function getLiveSession(): Promise<Session | null> {
     .select("company_id, role, full_name, companies(slug)")
     .eq("user_id", user.id)
     .eq("status", "active")
+    // One workspace per session: a user who joined a second company via invite must still be able to sign in.
+    .order("joined_at", { ascending: true })
+    .limit(1)
     .maybeSingle<MemberWithCompanySlug>();
 
   if (!member) return null;
